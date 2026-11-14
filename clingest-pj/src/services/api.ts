@@ -2,6 +2,7 @@ import type { PrestadorPJ } from '../types/prestador';
 import type { DocumentoCompliance } from '../types/compliance';
 import type { FaturamentoPJ, StatusFaturamento } from '../types/faturamento';
 import type { TarefaPJ, StatusTarefa } from '../types/tarefa';
+import type { EmpresaTenant } from '../types/contrato';
 
 export interface ContratoPJ {
   id: string;
@@ -54,7 +55,50 @@ const STORAGE_KEYS = {
   AUDIT_LOGS: '@clingest_audit',
   CHAMADOS: '@clingest_chamados',
   FATURAMENTO: '@clingest_faturamento',
-  TAREFAS: '@clingest_tarefas'
+  TAREFAS: '@clingest_tarefas',
+  EMPRESAS_TENANTS: '@clingest_empresas_tenants'
+};
+
+export const apiEmpresas = {
+  getEmpresas: async (): Promise<EmpresaTenant[]> => {
+    const data = localStorage.getItem(STORAGE_KEYS.EMPRESAS_TENANTS);
+    if (!data) {
+      const inicial: EmpresaTenant[] = [
+        {
+          id: 'emp1',
+          nomeFantasia: 'Hospital Sao Lucas',
+          razaoSocial: 'Sao Lucas Servicos Medicos Ltda',
+          cnpj: '98.765.432/0001-12',
+          limitePrestadores: 15,
+          valorMensalidade: 1125.00,
+          status: 'ATIVO',
+          criadoEm: '2026-10-01'
+        }
+      ];
+      localStorage.setItem(STORAGE_KEYS.EMPRESAS_TENANTS, JSON.stringify(inicial));
+      return inicial;
+    }
+    return JSON.parse(data);
+  },
+
+  salvarEmpresa: async (dados: Omit<EmpresaTenant, 'id' | 'criadoEm'>): Promise<EmpresaTenant[]> => {
+    const empresas = await apiEmpresas.getEmpresas();
+    const nova: EmpresaTenant = {
+      ...dados,
+      id: Math.random().toString(36).substr(2, 9),
+      criadoEm: new Date().toISOString().split('T')[0]
+    };
+    const atualizadas = [nova, ...empresas];
+    localStorage.setItem(STORAGE_KEYS.EMPRESAS_TENANTS, JSON.stringify(atualizadas));
+    return atualizadas;
+  },
+
+  atualizarStatusEmpresa: async (id: string, status: 'ATIVO' | 'SUSPENSO'): Promise<EmpresaTenant[]> => {
+    const empresas = await apiEmpresas.getEmpresas();
+    const atualizadas = empresas.map(emp => emp.id === id ? { ...emp, status } : emp);
+    localStorage.setItem(STORAGE_KEYS.EMPRESAS_TENANTS, JSON.stringify(atualizadas));
+    return atualizadas;
+  }
 };
 
 export const api = {

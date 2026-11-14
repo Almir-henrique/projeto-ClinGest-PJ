@@ -1,258 +1,311 @@
-import React, { useEffect, useState } from 'react';
-import { FileText, Users, DollarSign, Plus, Lock } from 'lucide-react';
-import { api } from '../services/api';
+import React, { useState, useEffect } from 'react';
+import { Building2, Plus, Users, DollarSign, ShieldCheck, AlertCircle } from 'lucide-react';
+import { apiEmpresas, api } from '../services/api';
+import type { EmpresaTenant } from '../types/contrato';
 import type { PrestadorPJ } from '../types/prestador';
-import type { ContratoPJ, NotaFiscalPJ } from '../services/api';
-import { useToast } from '../context/ToastContext';
 
 export const PainelMaster: React.FC = () => {
+  const [empresas, setEmpresas] = useState<EmpresaTenant[]>([]);
   const [prestadores, setPrestadores] = useState<PrestadorPJ[]>([]);
-  const [contratos, setContratos] = useState<ContratoPJ[]>([]);
-  const [notasFiscais, setNotasFiscais] = useState<NotaFiscalPJ[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  const [numeroContrato, setNumeroContrato] = useState('');
-  const [prestadorIdSelecionado, setPrestadorIdSelecionado] = useState('');
-  const [dataInicio, setDataInicio] = useState('');
-  const [dataTermino, setDataTermino] = useState('');
-  const [valorMensal, setValorMensal] = useState('');
-
-  const { showToast } = useToast();
-
-  const carregarDadosMaster = async () => {
-    try {
-      const [pData, cData, nData] = await Promise.all([
-        api.getPrestadores(),
-        api.getContratos(),
-        api.getNotasFiscais()
-      ]);
-      setPrestadores(pData);
-      setContratos(cData);
-      setNotasFiscais(nData);
-    } catch {
-      showToast('Erro ao carregar dados do painel master', 'error');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const [modalAberto, setModalAberto] = useState(false);
+  
+  // Estados do formulário de nova empresa cliente
+  const [nomeFantasia, setNomeFantasia] = useState('');
+  const [razaoSocial, setRazaoSocial] = useState('');
+  const [cnpj, setCnpj] = useState('');
+  const [limitePrestadores, setLimitePrestadores] = useState(10);
+  const [valorMensalidade, setValorMensalidade] = useState(750.00);
 
   useEffect(() => {
-    carregarDadosMaster();
+    carregarDados();
   }, []);
 
-  const handleCadastrarContrato = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const prestadorObj = prestadores.find((p) => p.id === prestadorIdSelecionado);
-    if (!prestadorObj) {
-      showToast('Selecione um prestador válido', 'error');
-      return;
-    }
-
-    try {
-      const novoContrato: ContratoPJ = {
-        id: String(Date.now()),
-        prestadorId: prestadorObj.id,
-        prestadorNome: prestadorObj.nome,
-        numeroContrato,
-        dataInicio,
-        dataTermino,
-        valorMensal: Number(valorMensal) || 0,
-        status: 'VIGENTE'
-      };
-
-      const contratosAtuais = await api.getContratos();
-      const atualizados = [novoContrato, ...contratosAtuais];
-      localStorage.setItem('@clingest_contratos', JSON.stringify(atualizados));
-      setContratos(atualizados);
-
-      setNumeroContrato('');
-      setPrestadorIdSelecionado('');
-      setDataInicio('');
-      setDataTermino('');
-      setValorMensal('');
-      showToast('Contrato cadastrado e vinculado com sucesso', 'success');
-      api.registrarAuditLog('NOVO_CONTRATO_MASTER', 'Henrique_dev', `Contrato ${numeroContrato} vinculado a ${prestadorObj.nome}`);
-    } catch {
-      showToast('Erro ao salvar contrato', 'error');
-    }
+  const carregarDados = async () => {
+    const listaEmpresas = await apiEmpresas.getEmpresas();
+    const listaPrestadores = await api.getPrestadores();
+    setEmpresas(listaEmpresas);
+    setPrestadores(listaPrestadores);
   };
 
-  if (loading) {
-    return <div className="p-8 text-center text-brand-muted">Carregando painel master...</div>;
-  }
+  const calcularMensalidadeSugerida = (limite: number) => {
+    const basePorPrestador = 75.00;
+    return limite * basePorPrestador;
+  };
 
-  const totalValorContratos = contratos.reduce((acc, curr) => acc + curr.valorMensal, 0);
-  const _totalNFsHomologadas = notasFiscais.filter((n) => n.status === 'HOMOLOGADO').reduce((acc, curr) => acc + curr.valor, 0);
+  const handleLimiteChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = Number(e.target.value);
+    setLimitePrestadores(val);
+    setValorMensalidade(calcularMensalidadeSugerida(val));
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!nomeFantasia || !cnpj) return;
+
+    await apiEmpresas.salvarEmpresa({
+      nomeFantasia,
+      razaoSocial,
+      cnpj,
+      limitePrestadores,
+      valorMensalidade,
+      status: 'ATIVO'
+    });
+
+    setNomeFantasia('');
+    setRazaoSocial('');
+    setCnpj('');
+    setLimitePrestadores(10);
+    setValorMensalidade(750.00);
+    setModalAberto(false);
+    carregarDados();
+  };
+
+  const toggleStatusEmpresa = async (id: string, statusAtual: 'ATIVO' | 'SUSPENSO') => {
+    const novoStatus = statusAtual === 'ATIVO' ? 'SUSPENSO' : 'ATIVO';
+    await apiEmpresas.atualizarStatusEmpresa(id, novoStatus);
+    carregarDados();
+  };
+
+  const receitaTotalMRR = empresas
+    .filter(e => e.status === 'ATIVO')
+    .reduce((acc, curr) => acc + curr.valorMensalidade, 0);
+
+  const totalGeralPrestadores = prestadores.length;
 
   return (
-    <div className="p-8 max-w-7xl mx-auto space-y-8 font-sans">
-      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="p-6 space-y-6 bg-slate-50 min-h-screen">
+      {/* Cabeçalho */}
+      <div className="flex justify-between items-center">
         <div>
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-800 border border-amber-200 mb-2">
-            Acesso Master / Henrique_dev
+          <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+            <ShieldCheck className="w-7 h-7 text-indigo-600" /> Painel Master - Governança SaaS
+          </h1>
+          <p className="text-sm text-slate-500">Controle centralizado de tenants, limites de licenças por funcionários e faturamento recorrente (MRR)</p>
+        </div>
+        <button
+          onClick={() => setModalAberto(true)}
+          className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2.5 rounded-xl hover:bg-indigo-700 transition shadow-sm font-medium text-sm"
+        >
+          <Plus className="w-5 h-5" /> Cadastrar Empresa Cliente
+        </button>
+      </div>
+
+      {/* Cards de Métricas */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium text-slate-500">Empresas Contratantes</p>
+            <h3 className="text-2xl font-bold text-slate-800 mt-1">{empresas.length}</h3>
+          </div>
+          <div className="p-3.5 bg-indigo-50 text-indigo-600 rounded-xl">
+            <Building2 className="w-6 h-6" />
+          </div>
+        </div>
+
+        <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium text-slate-500">MRR Total (Receita Mensal)</p>
+            <h3 className="text-2xl font-bold text-emerald-600 mt-1">
+              R$ {receitaTotalMRR.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+            </h3>
+          </div>
+          <div className="p-3.5 bg-emerald-50 text-emerald-600 rounded-xl">
+            <DollarSign className="w-6 h-6" />
+          </div>
+        </div>
+
+        <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium text-slate-500">Total de Prestadores no Ecossistema</p>
+            <h3 className="text-2xl font-bold text-slate-800 mt-1">{totalGeralPrestadores}</h3>
+          </div>
+          <div className="p-3.5 bg-blue-50 text-blue-600 rounded-xl">
+            <Users className="w-6 h-6" />
+          </div>
+        </div>
+      </div>
+
+      {/* Tabela de Empresas / Tenants */}
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div className="p-5 border-b border-slate-200 font-semibold text-slate-800 flex justify-between items-center">
+          <span>Clínicas e Hospitais Licenciados (Tenants)</span>
+          <span className="text-xs bg-slate-100 text-slate-600 px-3 py-1 rounded-full font-normal">
+            Controle de Limite de Funcionários por Plano
           </span>
-          <h1 className="text-2xl font-bold text-brand-navy">Painel de Governança e Gestão de Contratos</h1>
-          <p className="text-brand-muted text-sm mt-0.5">
-            Controle total sobre contas, limites de cadastros, vigências contratuais e homologações de NFS-e.
-          </p>
         </div>
-        <div className="flex items-center gap-2 bg-slate-50 px-4 py-2.5 rounded-xl border border-slate-200 text-xs text-brand-muted">
-          <Lock size={16} className="text-brand-teal" />
-          <span>Perfil Master com Alçada Irrestrita</span>
-        </div>
-      </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-slate-50 text-slate-600 text-xs uppercase tracking-wider border-b border-slate-200">
+                <th className="p-4 font-semibold">Empresa / Razão Social</th>
+                <th className="p-4 font-semibold">CNPJ</th>
+                <th className="p-4 font-semibold">Ocupação de Licenças (Funcionários)</th>
+                <th className="p-4 font-semibold">Mensalidade (R$)</th>
+                <th className="p-4 font-semibold">Status do Plano</th>
+                <th className="p-4 font-semibold text-right">Ações Master</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 text-sm">
+              {empresas.map(emp => {
+                // Simulação de vínculo por empresa (caso o prestador possua empresaId ou geral)
+                const prestadoresDaEmpresa = prestadores.filter(p => p.empresaId === emp.id || !p.empresaId);
+                const totalAtual = prestadoresDaEmpresa.length;
+                const percentual = (totalAtual / emp.limitePrestadores) * 100;
+                const limiteAtingido = totalAtual >= emp.limitePrestadores;
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-          <div className="flex items-center justify-between text-brand-muted mb-2">
-            <span className="text-xs font-semibold uppercase tracking-wider">Prestadores Ativos</span>
-            <Users size={20} className="text-brand-teal" />
-          </div>
-          <p className="text-2xl font-bold text-brand-navy">{prestadores.length}</p>
-        </div>
-        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-          <div className="flex items-center justify-between text-brand-muted mb-2">
-            <span className="text-xs font-semibold uppercase tracking-wider">Contratos Vigentes</span>
-            <FileText size={20} className="text-indigo-600" />
-          </div>
-          <p className="text-2xl font-bold text-brand-navy">{contratos.length}</p>
-        </div>
-        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-          <div className="flex items-center justify-between text-brand-muted mb-2">
-            <span className="text-xs font-semibold uppercase tracking-wider">Volume em Contratos/Mês</span>
-            <DollarSign size={20} className="text-emerald-600" />
-          </div>
-          <p className="text-2xl font-bold text-brand-navy">
-            {totalValorContratos.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-          </p>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 lg:col-span-1">
-          <h2 className="text-base font-bold text-brand-navy mb-4 flex items-center gap-2">
-            <Plus size={18} className="text-brand-teal" />
-            Cadastrar Novo Contrato PJ
-          </h2>
-          <form onSubmit={handleCadastrarContrato} className="space-y-4">
-            <div>
-              <label className="block text-xs font-semibold uppercase text-brand-muted mb-1">Número do Contrato</label>
-              <input
-                type="text"
-                value={numeroContrato}
-                onChange={(e) => setNumeroContrato(e.target.value)}
-                placeholder="Ex: CTR-2026/045"
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-brand-navy focus:outline-none focus:border-brand-teal"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold uppercase text-brand-muted mb-1">Selecionar Prestador PJ</label>
-              <select
-                value={prestadorIdSelecionado}
-                onChange={(e) => setPrestadorIdSelecionado(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-brand-navy focus:outline-none focus:border-brand-teal"
-                required
-              >
-                <option value="">Selecione o profissional...</option>
-                {prestadores.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.nome} ({p.servico})
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="block text-xs font-semibold uppercase text-brand-muted mb-1">Início</label>
-                <input
-                  type="date"
-                  value={dataInicio}
-                  onChange={(e) => setDataInicio(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-brand-navy focus:outline-none focus:border-brand-teal"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold uppercase text-brand-muted mb-1">Término</label>
-                <input
-                  type="date"
-                  value={dataTermino}
-                  onChange={(e) => setDataTermino(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-brand-navy focus:outline-none focus:border-brand-teal"
-                  required
-                />
-              </div>
-            </div>
-            <div>
-              <label className="block text-xs font-semibold uppercase text-brand-muted mb-1">Valor Estimado Mensal (R$)</label>
-              <input
-                type="number"
-                step="0.01"
-                value={valorMensal}
-                onChange={(e) => setValorMensal(e.target.value)}
-                placeholder="Ex: 5000.00"
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-brand-navy focus:outline-none focus:border-brand-teal"
-                required
-              />
-            </div>
-            <button
-              type="submit"
-              className="w-full py-2.5 bg-brand-teal hover:bg-teal-800 text-white rounded-lg text-sm font-medium transition-colors shadow-sm flex items-center justify-center gap-2"
-            >
-              <Plus size={16} />
-              Vincular Contrato Master
-            </button>
-          </form>
-        </div>
-
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 lg:col-span-2">
-          <h2 className="text-base font-bold text-brand-navy mb-4 flex items-center gap-2">
-            <FileText size={18} className="text-brand-teal" />
-            Repositório Global de Contratos e Vigências
-          </h2>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-slate-50 border-b border-slate-200 text-xs uppercase text-brand-muted">
-                  <th className="py-3 px-4 font-semibold">Contrato</th>
-                  <th className="py-3 px-4 font-semibold">Prestador PJ</th>
-                  <th className="py-3 px-4 font-semibold">Vigência</th>
-                  <th className="py-3 px-4 font-semibold">Valor Mensal</th>
-                  <th className="py-3 px-4 font-semibold">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 text-sm">
-                {contratos.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="py-8 text-center text-brand-muted">
-                      Nenhum contrato cadastrado.
+                return (
+                  <tr key={emp.id} className="hover:bg-slate-50/80 transition">
+                    <td className="p-4 font-medium text-slate-800">
+                      {emp.nomeFantasia}
+                      <span className="block text-xs text-slate-400 font-normal">{emp.razaoSocial}</span>
+                    </td>
+                    <td className="p-4 text-slate-600 font-mono text-xs">{emp.cnpj}</td>
+                    <td className="p-4">
+                      <div className="flex items-center gap-2">
+                        <span className={`font-bold ${limiteAtingido ? 'text-red-600' : 'text-slate-800'}`}>
+                          {totalAtual} / {emp.limitePrestadores}
+                        </span>
+                        {limiteAtingido && (
+                          <span className="bg-red-100 text-red-700 text-[10px] px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
+                            <AlertCircle className="w-3 h-3" /> Limite Atingido
+                          </span>
+                        )}
+                      </div>
+                      <div className="w-48 bg-slate-200 h-2 rounded-full mt-2 overflow-hidden">
+                        <div 
+                          className={`h-full rounded-full transition-all ${limiteAtingido ? 'bg-red-500' : 'bg-indigo-600'}`} 
+                          style={{ width: `${Math.min(percentual, 100)}%` }}
+                        />
+                      </div>
+                    </td>
+                    <td className="p-4 text-emerald-600 font-bold">
+                      R$ {emp.valorMensalidade.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    </td>
+                    <td className="p-4">
+                      <span className={`px-3 py-1 rounded-full text-xs font-semibold inline-block ${
+                        emp.status === 'ATIVO' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'
+                      }`}>
+                        {emp.status}
+                      </span>
+                    </td>
+                    <td className="p-4 text-right">
+                      <button
+                        onClick={() => toggleStatusEmpresa(emp.id, emp.status)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                          emp.status === 'ATIVO' 
+                            ? 'bg-red-50 text-red-600 hover:bg-red-100' 
+                            : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'
+                        }`}
+                      >
+                        {emp.status === 'ATIVO' ? 'Suspender Acesso' : 'Ativar Plano'}
+                      </button>
                     </td>
                   </tr>
-                ) : (
-                  contratos.map((c) => (
-                    <tr key={c.id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="py-3 px-4 font-semibold text-brand-navy">{c.numeroContrato}</td>
-                      <td className="py-3 px-4 text-brand-muted">{c.prestadorNome}</td>
-                      <td className="py-3 px-4 text-brand-muted text-xs">
-                        {c.dataInicio} até {c.dataTermino}
-                      </td>
-                      <td className="py-3 px-4 font-semibold text-brand-teal">
-                        {c.valorMensal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                      </td>
-                      <td className="py-3 px-4">
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border bg-emerald-50 text-emerald-700 border-emerald-200">
-                          {c.status}
-                        </span>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       </div>
+
+      {/* Modal de Cadastro de Nova Empresa Tenant */}
+      {modalAberto && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 space-y-5 shadow-2xl animate-in fade-in zoom-in duration-200">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+              <h2 className="text-lg font-bold text-slate-800">Cadastrar Nova Empresa Cliente (Tenant)</h2>
+              <button 
+                onClick={() => setModalAberto(false)}
+                className="text-slate-400 hover:text-slate-600 font-bold text-lg"
+              >
+                &times;
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Nome Fantasia da Clínica / Hospital</label>
+                <input
+                  type="text"
+                  required
+                  value={nomeFantasia}
+                  onChange={e => setNomeFantasia(e.target.value)}
+                  className="w-full border border-slate-300 rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                  placeholder="Ex: Hospital São Lucas"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Razão Social</label>
+                <input
+                  type="text"
+                  required
+                  value={razaoSocial}
+                  onChange={e => setRazaoSocial(e.target.value)}
+                  className="w-full border border-slate-300 rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                  placeholder="Ex: São Lucas Serviços Médicos Ltda"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">CNPJ</label>
+                <input
+                  type="text"
+                  required
+                  value={cnpj}
+                  onChange={e => setCnpj(e.target.value)}
+                  className="w-full border border-slate-300 rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                  placeholder="00.000.000/0001-00"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">Limite de Funcionários</label>
+                  <input
+                    type="number"
+                    min="1"
+                    required
+                    value={limitePrestadores}
+                    onChange={handleLimiteChange}
+                    className="w-full border border-slate-300 rounded-xl p-3 text-sm font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500 outline-none"
+                  />
+                  <span className="text-[10px] text-slate-400 mt-1 block">Teto de cadastros permitidos para a clínica.</span>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">Mensalidade (R$)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    value={valorMensalidade}
+                    onChange={e => setValorMensalidade(Number(e.target.value))}
+                    className="w-full border border-slate-300 rounded-xl p-3 text-sm font-bold text-emerald-600 focus:ring-2 focus:ring-indigo-500 outline-none bg-emerald-50/30"
+                  />
+                  <span className="text-[10px] text-slate-400 mt-1 block">Base de ganho recorrente (MRR).</span>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setModalAberto(false)}
+                  className="px-4 py-2.5 border border-slate-300 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50 transition"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-semibold hover:bg-indigo-700 transition shadow-sm"
+                >
+                  Salvar Empresa Tenant
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

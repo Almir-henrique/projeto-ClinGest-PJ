@@ -1,6 +1,6 @@
 import type { UsuarioSistema } from '../types/usuario';
 import type { PrestadorPJ } from '../types/prestador';
-import type { ClientePJ, ContratoPJ } from '../types/contrato';
+import type { ClientePJ, ContratoPJ, EmpresaTenant } from '../types/contrato';
 import type { AtendimentoPJ, StatusAtendimento } from '../types/atendimento';
 import type { FaturamentoPJ } from '../types/faturamento';
 import type { PagamentoPJ } from '../types/pagamento';
@@ -12,7 +12,8 @@ const STORAGE_KEYS = {
   CONTRATOS: '@clingest_contratos',
   ATENDIMENTOS: '@clingest_atendimentos',
   FATURAMENTO: '@clingest_faturamento',
-  PAGAMENTOS: '@clingest_pagamentos'
+  PAGAMENTOS: '@clingest_pagamentos',
+  EMPRESAS_TENANTS: '@clingest_empresas_tenants'
 };
 
 const usuariosIniciais: UsuarioSistema[] = [
@@ -74,6 +75,19 @@ const pagamentosIniciais: PagamentoPJ[] = [
     dataPagamento: '2026-10-30',
     status: 'QUITADO',
     comprovanteCodigo: 'PIX-998823719283'
+  }
+];
+
+const empresasIniciais: EmpresaTenant[] = [
+  {
+    id: 'emp1',
+    nomeFantasia: 'Hospital Sao Lucas',
+    razaoSocial: 'Sao Lucas Servicos Medicos Ltda',
+    cnpj: '98.765.432/0001-12',
+    limitePrestadores: 15,
+    valorMensalidade: 1500.00,
+    status: 'ATIVO',
+    criadoEm: '2026-10-01'
   }
 ];
 
@@ -172,6 +186,29 @@ export const dbServicePagamentos = {
       comprovanteCodigo: codigoComprovante
     } : p);
     setStorage(STORAGE_KEYS.PAGAMENTOS, atualizados);
+    return atualizados;
+  }
+};
+
+export const dbServiceEmpresas = {
+  getEmpresas: (): EmpresaTenant[] => getStorage(STORAGE_KEYS.EMPRESAS_TENANTS, empresasIniciais),
+
+  salvarEmpresa: (nova: Omit<EmpresaTenant, 'id' | 'criadoEm'>): EmpresaTenant[] => {
+    const lista = dbServiceEmpresas.getEmpresas();
+    const item: EmpresaTenant = {
+      id: String(Date.now()),
+      ...nova,
+      criadoEm: new Date().toISOString().split('T')[0]
+    };
+    const atualizados = [item, ...lista];
+    setStorage(STORAGE_KEYS.EMPRESAS_TENANTS, atualizados);
+    return atualizados;
+  },
+
+  atualizarStatusEmpresa: (id: string, status: 'ATIVO' | 'SUSPENSO'): EmpresaTenant[] => {
+    const lista = dbServiceEmpresas.getEmpresas();
+    const atualizados = lista.map(e => e.id === id ? { ...e, status } : e);
+    setStorage(STORAGE_KEYS.EMPRESAS_TENANTS, atualizados);
     return atualizados;
   }
 };
