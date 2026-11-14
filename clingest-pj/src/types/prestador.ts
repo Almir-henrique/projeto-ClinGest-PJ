@@ -4,6 +4,7 @@ export type SituacaoPrestador = 'ATIVO' | 'INATIVO';
 
 export interface PrestadorPJ {
   id: string;
+  empresaId?: string; 
   nome: string;
   razaoSocial: string;
   cnpj: string;

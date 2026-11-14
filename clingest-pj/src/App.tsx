@@ -10,7 +10,7 @@ import { PainelRelatorios } from './pages/PainelRelatorios';
 import { dbService } from './services/db';
 import type { UsuarioSistema } from './types/usuario';
 import type { PrestadorPJ } from './types/prestador';
-import { LogOut, Shield, Users, CheckSquare, Building, DollarSign, CreditCard, BarChart3 } from 'lucide-react';
+import { LogOut, Users, CheckSquare, Building, DollarSign, CreditCard, BarChart3 } from 'lucide-react';
 
 export function App() {
   const [usuarioLogado, setUsuarioLogado] = useState<UsuarioSistema | null>(null);
@@ -48,108 +48,119 @@ export function App() {
   return (
     <ToastProvider>
       <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
-        <header className="bg-slate-900 border-b border-slate-800 text-white px-8 py-4 flex items-center justify-between shadow-sm">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-teal-500/10 rounded-xl border border-teal-500/20 text-brand-teal">
-              <Building size={20} />
+        {usuarioLogado.perfil !== 'MASTER' && (
+          <header className="bg-slate-900 border-b border-slate-800 text-white px-8 py-4 flex items-center justify-between shadow-sm">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-teal-500/10 rounded-xl border border-teal-500/20 text-brand-teal">
+                <Building size={20} />
+              </div>
+              <div>
+                <h1 className="font-bold text-base leading-tight">ClinGest PJ</h1>
+                <p className="text-xs text-slate-400">
+                  Perfil de Acesso:{' '}
+                  <span className="text-brand-teal uppercase font-semibold">
+                    {usuarioLogado.perfil}
+                  </span>
+                </p>
+              </div>
             </div>
-            <div>
-              <h1 className="font-bold text-base leading-tight">ClinGest PJ</h1>
-              <p className="text-xs text-slate-400">
-                Perfil de Acesso: <span className="text-brand-teal uppercase font-semibold">{usuarioLogado.perfil}</span>
-              </p>
-            </div>
-          </div>
 
-          <nav className="flex items-center gap-2">
-            {usuarioLogado.perfil === 'MASTER' && (
+            <nav className="flex items-center gap-2">
+              {usuarioLogado.perfil === 'GESTOR' && (
+                <>
+                  <button
+                    onClick={() => setAbaAtiva('gestor')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 ${
+                      abaAtiva === 'gestor'
+                        ? 'bg-brand-teal text-white'
+                        : 'text-slate-300 hover:bg-slate-800'
+                    }`}
+                  >
+                    <CheckSquare size={14} />
+                    Atendimentos
+                  </button>
+                  <button
+                    onClick={() => setAbaAtiva('faturamento')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 ${
+                      abaAtiva === 'faturamento'
+                        ? 'bg-brand-teal text-white'
+                        : 'text-slate-300 hover:bg-slate-800'
+                    }`}
+                  >
+                    <DollarSign size={14} />
+                    Faturamento
+                  </button>
+                  <button
+                    onClick={() => setAbaAtiva('pagamentos')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 ${
+                      abaAtiva === 'pagamentos'
+                        ? 'bg-brand-teal text-white'
+                        : 'text-slate-300 hover:bg-slate-800'
+                    }`}
+                  >
+                    <CreditCard size={14} />
+                    Pagamentos
+                  </button>
+                  <button
+                    onClick={() => setAbaAtiva('relatorios')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 ${
+                      abaAtiva === 'relatorios'
+                        ? 'bg-brand-teal text-white'
+                        : 'text-slate-300 hover:bg-slate-800'
+                    }`}
+                  >
+                    <BarChart3 size={14} />
+                    Relatórios
+                  </button>
+                </>
+              )}
+
+              {usuarioLogado.perfil === 'PRESTADOR' && (
+                <button
+                  onClick={() => setAbaAtiva('prestador')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 ${
+                    abaAtiva === 'prestador'
+                      ? 'bg-brand-teal text-white'
+                      : 'text-slate-300 hover:bg-slate-800'
+                  }`}
+                >
+                  <Users size={14} />
+                  Meu Portal PJ
+                </button>
+              )}
+            </nav>
+
+            <div className="flex items-center gap-4 pl-4 border-l border-slate-700">
+              <div className="text-right">
+                <p className="text-xs font-medium text-white">{usuarioLogado.nome}</p>
+                <p className="text-[10px] text-slate-400">{usuarioLogado.email}</p>
+              </div>
               <button
-                onClick={() => setAbaAtiva('master')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 ${
-                  abaAtiva === 'master' ? 'bg-brand-teal text-white' : 'text-slate-300 hover:bg-slate-800'
-                }`}
+                onClick={handleLogout}
+                className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
+                title="Encerrar Sessão"
               >
-                <Shield size={14} />
-                Painel Master
+                <LogOut size={16} />
               </button>
-            )}
-
-            {(usuarioLogado.perfil === 'MASTER' || usuarioLogado.perfil === 'GESTOR') && (
-              <>
-                <button
-                  onClick={() => setAbaAtiva('gestor')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 ${
-                    abaAtiva === 'gestor' ? 'bg-brand-teal text-white' : 'text-slate-300 hover:bg-slate-800'
-                  }`}
-                >
-                  <CheckSquare size={14} />
-                  Atendimentos
-                </button>
-                <button
-                  onClick={() => setAbaAtiva('faturamento')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 ${
-                    abaAtiva === 'faturamento' ? 'bg-brand-teal text-white' : 'text-slate-300 hover:bg-slate-800'
-                  }`}
-                >
-                  <DollarSign size={14} />
-                  Faturamento
-                </button>
-                <button
-                  onClick={() => setAbaAtiva('pagamentos')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 ${
-                    abaAtiva === 'pagamentos' ? 'bg-brand-teal text-white' : 'text-slate-300 hover:bg-slate-800'
-                  }`}
-                >
-                  <CreditCard size={14} />
-                  Pagamentos
-                </button>
-                <button
-                  onClick={() => setAbaAtiva('relatorios')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 ${
-                    abaAtiva === 'relatorios' ? 'bg-brand-teal text-white' : 'text-slate-300 hover:bg-slate-800'
-                  }`}
-                >
-                  <BarChart3 size={14} />
-                  Relatórios
-                </button>
-              </>
-            )}
-
-            {usuarioLogado.perfil === 'PRESTADOR' && (
-              <button
-                onClick={() => setAbaAtiva('prestador')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 ${
-                  abaAtiva === 'prestador' ? 'bg-brand-teal text-white' : 'text-slate-300 hover:bg-slate-800'
-                }`}
-              >
-                <Users size={14} />
-                Meu Portal PJ
-              </button>
-            )}
-          </nav>
-
-          <div className="flex items-center gap-4 pl-4 border-l border-slate-700">
-            <div className="text-right">
-              <p className="text-xs font-medium text-white">{usuarioLogado.nome}</p>
-              <p className="text-[10px] text-slate-400">{usuarioLogado.email}</p>
             </div>
-            <button
-              onClick={handleLogout}
-              className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
-              title="Encerrar Sessão"
-            >
-              <LogOut size={16} />
-            </button>
-          </div>
-        </header>
+          </header>
+        )}
 
         <main className="flex-1">
-          {abaAtiva === 'master' && <PainelMaster />}
+          {abaAtiva === 'master' && (
+            <PainelMaster
+              usuarioNome={usuarioLogado.nome}
+              usuarioEmail={usuarioLogado.email}
+              onLogout={handleLogout}
+            />
+          )}
           {abaAtiva === 'gestor' && <PainelGestor />}
           {abaAtiva === 'faturamento' && <PainelFaturamento />}
           {abaAtiva === 'pagamentos' && <PainelPagamentos />}
           {abaAtiva === 'relatorios' && <PainelRelatorios />}
-          {abaAtiva === 'prestador' && prestadorObj && <PortalPrestador prestadorLogado={prestadorObj} />}
+          {abaAtiva === 'prestador' && prestadorObj && (
+            <PortalPrestador prestadorLogado={prestadorObj} />
+          )}
         </main>
       </div>
     </ToastProvider>
