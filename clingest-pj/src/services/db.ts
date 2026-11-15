@@ -13,41 +13,101 @@ const STORAGE_KEYS = {
   ATENDIMENTOS: '@clingest_atendimentos',
   FATURAMENTO: '@clingest_faturamento',
   PAGAMENTOS: '@clingest_pagamentos',
-  EMPRESAS_TENANTS: '@clingest_empresas_tenants'
+  EMPRESAS_TENANTS: '@clingest_empresas_tenants',
+  EMPRESAS_MASTER: 'clingest_empresas_saas'
 };
 
 const usuariosIniciais: UsuarioSistema[] = [
-  { id: 'u1', nome: 'Henrique Master', email: 'henrique@clingest.com', usuario: 'Henrique_dev', perfil: 'MASTER', ativo: true, criadoEm: '2026-10-01' },
-  { id: 'u2', nome: 'Gestor Operacional', email: 'gestor@clingest.com', usuario: 'gestor', perfil: 'GESTOR', ativo: true, criadoEm: '2026-10-01' },
-  { id: 'u3', nome: 'Mariana Costa', email: 'mariana.costa@clinica.com', usuario: 'mariana.costa', perfil: 'PRESTADOR', prestadorId: 'p1', ativo: true, criadoEm: '2026-10-01' }
+  {
+    id: 'u1',
+    nome: 'Henrique Master',
+    email: 'henrique@clingest.com',
+    usuario: 'Henrique_dev',
+    senha: '123',
+    perfil: 'MASTER',
+    ativo: true,
+    criadoEm: '2026-10-01'
+  },
+  {
+    id: 'u2',
+    empresaId: 'emp1',
+    empresaNome: 'Hospital Sao Lucas',
+    nome: 'Gestor Operacional',
+    email: 'gestor@clingest.com',
+    usuario: 'gestor',
+    senha: '123',
+    perfil: 'GESTOR',
+    ativo: true,
+    criadoEm: '2026-10-01'
+  },
+  {
+    id: 'u3',
+    empresaId: 'emp1',
+    empresaNome: 'Hospital Sao Lucas',
+    nome: 'Mariana Costa',
+    email: 'mariana.costa@clinica.com',
+    usuario: 'mariana.costa',
+    senha: '123',
+    perfil: 'PRESTADOR',
+    prestadorId: 'p1',
+    ativo: true,
+    criadoEm: '2026-10-01'
+  }
 ];
 
 const prestadoresIniciais: PrestadorPJ[] = [
-  { 
-    id: 'p1', 
-    nome: 'Mariana Costa', 
-    razaoSocial: 'Costa Saude S/S', 
-    cnpj: '12.345.678/0001-90', 
-    email: 'mariana.costa@clinica.com', 
-    servico: 'Enfermagem UTI', 
+  {
+    id: 'p1',
+    empresaId: 'emp1',
+    nome: 'Mariana Costa',
+    razaoSocial: 'Costa Saude S/S',
+    cnpj: '12.345.678/0001-90',
+    email: 'mariana.costa@clinica.com',
+    servico: 'Enfermagem UTI',
     remuneracao: 'POR_HORA',
-    valorBase: 75.00,
+    valorBase: 75.0,
     contratoStatus: 'VIGENTE',
-    situacao: 'ATIVO', 
-    criadoEm: '2026-10-01' 
+    situacao: 'ATIVO',
+    usuario: 'mariana.costa',
+    senha: '123',
+    criadoEm: '2026-10-01'
   }
 ];
 
 const clientesIniciais: ClientePJ[] = [
-  { id: 'cl1', nomeFantasia: 'Hospital Sao Lucas', razaoSocial: 'Sao Lucas Servicos Medicos Ltda', cnpj: '98.765.432/0001-12' }
+  {
+    id: 'cl1',
+    nomeFantasia: 'Hospital Sao Lucas',
+    razaoSocial: 'Sao Lucas Servicos Medicos Ltda',
+    cnpj: '98.765.432/0001-12'
+  }
 ];
 
 const contratosIniciais: ContratoPJ[] = [
-  { id: 'ct1', prestadorId: 'p1', clienteId: 'cl1', numeroContrato: 'CTR-2026/001', valorHora: 50.00, dataInicio: '2026-01-01', dataTermino: '2027-01-01', status: 'VIGENTE' }
+  {
+    id: 'ct1',
+    prestadorId: 'p1',
+    clienteId: 'cl1',
+    numeroContrato: 'CTR-2026/001',
+    valorHora: 75.0,
+    dataInicio: '2026-01-01',
+    dataTermino: '2027-01-01',
+    status: 'VIGENTE'
+  }
 ];
 
 const atendimentosIniciais: AtendimentoPJ[] = [
-  { id: 'at1', prestadorId: 'p1', clienteId: 'cl1', pacienteNome: 'Carlos Alberto', dataAtendimento: '2026-10-25', horasTrabalhadas: 8, valorHoraAplicado: 50.00, valorTotal: 400.00, status: 'APROVADO' }
+  {
+    id: 'at1',
+    prestadorId: 'p1',
+    clienteId: 'cl1',
+    pacienteNome: 'Carlos Alberto',
+    dataAtendimento: '2026-10-25',
+    horasTrabalhadas: 8,
+    valorHoraAplicado: 75.0,
+    valorTotal: 600.0,
+    status: 'APROVADO'
+  }
 ];
 
 const faturamentoIniciais: FaturamentoPJ[] = [
@@ -57,9 +117,9 @@ const faturamentoIniciais: FaturamentoPJ[] = [
     prestadorNome: 'Mariana Costa',
     competencia: '10/2026',
     totalHoras: 8,
-    valorBruto: 400.00,
-    impostosRetidos: 24.00,
-    valorLiquido: 376.00,
+    valorBruto: 600.0,
+    impostosRetidos: 36.0,
+    valorLiquido: 564.0,
     status: 'HOMOLOGADO',
     dataEmissao: '2026-10-28'
   }
@@ -71,7 +131,7 @@ const pagamentosIniciais: PagamentoPJ[] = [
     prestadorId: 'p1',
     prestadorNome: 'Mariana Costa',
     competencia: '10/2026',
-    valorLiquido: 376.00,
+    valorLiquido: 564.0,
     dataPagamento: '2026-10-30',
     status: 'QUITADO',
     comprovanteCodigo: 'PIX-998823719283'
@@ -85,7 +145,7 @@ const empresasIniciais: EmpresaTenant[] = [
     razaoSocial: 'Sao Lucas Servicos Medicos Ltda',
     cnpj: '98.765.432/0001-12',
     limitePrestadores: 15,
-    valorMensalidade: 1500.00,
+    valorMensalidade: 1500.0,
     status: 'ATIVO',
     criadoEm: '2026-10-01'
   }
@@ -97,27 +157,105 @@ function getStorage<T>(key: string, initial: T): T {
     localStorage.setItem(key, JSON.stringify(initial));
     return initial;
   }
-  try { return JSON.parse(data); } catch { return initial; }
+  try {
+    return JSON.parse(data);
+  } catch {
+    return initial;
+  }
 }
 
 function setStorage<T>(key: string, value: T): void {
   localStorage.setItem(key, JSON.stringify(value));
 }
 
-export const dbService = {
-  getUsuarios: (): UsuarioSistema[] => getStorage(STORAGE_KEYS.USUARIOS, usuariosIniciais),
-  getPrestadores: (): PrestadorPJ[] => getStorage(STORAGE_KEYS.PRESTADORES, prestadoresIniciais),
-  getClientes: (): ClientePJ[] => getStorage(STORAGE_KEYS.CLIENTES, clientesIniciais),
-  getContratos: (): ContratoPJ[] => getStorage(STORAGE_KEYS.CONTRATOS, contratosIniciais),
-  getAtendimentos: (): AtendimentoPJ[] => getStorage(STORAGE_KEYS.ATENDIMENTOS, atendimentosIniciais),
+function garantirEmpresaSeedNoMaster(): void {
+  try {
+    const rawMaster = localStorage.getItem(STORAGE_KEYS.EMPRESAS_MASTER);
+    if (!rawMaster) return;
 
-  salvarAtendimento: (novo: Omit<AtendimentoPJ, 'id' | 'valorTotal' | 'status'>): AtendimentoPJ[] => {
+    const listaMaster = JSON.parse(rawMaster);
+    if (!Array.isArray(listaMaster)) return;
+
+    const jaExiste = listaMaster.some(
+      (e: { id?: string; cnpj?: string }) =>
+        e.id === 'emp1' || e.cnpj === '98.765.432/0001-12'
+    );
+
+    if (!jaExiste) {
+      listaMaster.push({
+        id: 'emp1',
+        nomeFantasia: 'Hospital Sao Lucas',
+        razaoSocial: 'Sao Lucas Servicos Medicos Ltda',
+        cnpj: '98.765.432/0001-12',
+        emailContato: 'gestor@clingest.com',
+        telefone: '(81) 3333-4444',
+        plano: 'PROFISSIONAL',
+        status: 'ATIVA',
+        licencasContratadas: 15,
+        valorMensalBase: 1490.0,
+        politicaExcedentes: 'COBRAR',
+        valorPorExcedente: 49.9,
+        dataCadastro: '2026-10-01',
+        proximoVencimento: '2026-12-01'
+      });
+      localStorage.setItem(
+        STORAGE_KEYS.EMPRESAS_MASTER,
+        JSON.stringify(listaMaster)
+      );
+    }
+  } catch {
+    // Ignora falha de leitura caso o Master ainda não tenha sido inicializado
+  }
+}
+
+garantirEmpresaSeedNoMaster();
+
+export const dbService = {
+  getUsuarios: (): UsuarioSistema[] =>
+    getStorage(STORAGE_KEYS.USUARIOS, usuariosIniciais),
+
+  getPrestadores: (): PrestadorPJ[] =>
+    getStorage(STORAGE_KEYS.PRESTADORES, prestadoresIniciais),
+
+  getPrestadoresPorEmpresa: (empresaId?: string): PrestadorPJ[] => {
+    const lista = dbService.getPrestadores();
+    return empresaId ? lista.filter((p) => p.empresaId === empresaId) : lista;
+  },
+
+  getClientes: (): ClientePJ[] =>
+    getStorage(STORAGE_KEYS.CLIENTES, clientesIniciais),
+
+  getContratos: (): ContratoPJ[] =>
+    getStorage(STORAGE_KEYS.CONTRATOS, contratosIniciais),
+
+  getAtendimentos: (): AtendimentoPJ[] =>
+    getStorage(STORAGE_KEYS.ATENDIMENTOS, atendimentosIniciais),
+
+  getAtendimentosPorEmpresa: (empresaId?: string): AtendimentoPJ[] => {
+    const lista = dbService.getAtendimentos();
+    if (!empresaId) return lista;
+    const idsEquipe = new Set(
+      dbService.getPrestadoresPorEmpresa(empresaId).map((p) => p.id)
+    );
+    return lista.filter((a) => idsEquipe.has(a.prestadorId));
+  },
+
+  salvarAtendimento: (
+    novo: Omit<AtendimentoPJ, 'id' | 'valorTotal' | 'status'>
+  ): AtendimentoPJ[] => {
     const lista = dbService.getAtendimentos();
     const contratos = dbService.getContratos();
-    
-    const contratoVigente = contratos.find(c => c.prestadorId === novo.prestadorId && c.status === 'VIGENTE');
-    const valorHora = contratoVigente ? contratoVigente.valorHora : 0;
-    
+    const prestadores = dbService.getPrestadores();
+
+    const contratoVigente = contratos.find(
+      (c) => c.prestadorId === novo.prestadorId && c.status === 'VIGENTE'
+    );
+    const prestador = prestadores.find((p) => p.id === novo.prestadorId);
+
+    const valorHora = contratoVigente
+      ? contratoVigente.valorHora
+      : prestador?.valorBase || 0;
+
     const item: AtendimentoPJ = {
       id: String(Date.now()),
       ...novo,
@@ -131,28 +269,69 @@ export const dbService = {
     return atualizados;
   },
 
-  atualizarStatusAtendimento: (id: string, status: StatusAtendimento): AtendimentoPJ[] => {
+  atualizarStatusAtendimento: (
+    id: string,
+    status: StatusAtendimento
+  ): AtendimentoPJ[] => {
     const lista = dbService.getAtendimentos();
-    const atualizados = lista.map(a => a.id === id ? { ...a, status } : a);
+    const atualizados = lista.map((a) => (a.id === id ? { ...a, status } : a));
     setStorage(STORAGE_KEYS.ATENDIMENTOS, atualizados);
     return atualizados;
   }
 };
 
 export const dbServiceFaturamento = {
-  getFaturamentos: (): FaturamentoPJ[] => getStorage(STORAGE_KEYS.FATURAMENTO, faturamentoIniciais),
+  getFaturamentos: (): FaturamentoPJ[] =>
+    getStorage(STORAGE_KEYS.FATURAMENTO, faturamentoIniciais),
 
-  gerarFechamentoMensal: (prestadorId: string, competencia: string): FaturamentoPJ[] => {
+  getFaturamentosPorEmpresa: (empresaId?: string): FaturamentoPJ[] => {
+    const lista = dbServiceFaturamento.getFaturamentos();
+    if (!empresaId) return lista;
+    const idsEquipe = new Set(
+      dbService.getPrestadoresPorEmpresa(empresaId).map((p) => p.id)
+    );
+    return lista.filter((f) => idsEquipe.has(f.prestadorId));
+  },
+
+  gerarFechamentoMensal: (
+    prestadorId: string,
+    competencia: string
+  ): FaturamentoPJ[] => {
     const atendimentos = dbService.getAtendimentos();
     const prestadores = dbService.getPrestadores();
-    const prestador = prestadores.find(p => p.id === prestadorId);
-    
-    const aprovados = atendimentos.filter(a => a.prestadorId === prestadorId && a.status === 'APROVADO');
-    const totalHoras = aprovados.reduce((acc, curr) => acc + curr.horasTrabalhadas, 0);
-    const valorBruto = aprovados.reduce((acc, curr) => acc + curr.valorTotal, 0);
-    
-    const impostosRetidos = valorBruto * 0.06;
-    const valorLiquido = valorBruto - impostosRetidos;
+    const prestador = prestadores.find((p) => p.id === prestadorId);
+
+    const todosAprovados = atendimentos.filter(
+      (a) => a.prestadorId === prestadorId && a.status === 'APROVADO'
+    );
+
+    // Tenta filtrar pela competência informada (MM/AAAA -> AAAA-MM); caso não haja naquele mês, consolida os aprovados disponíveis
+    const partes = competencia.split('/');
+    const prefixoData =
+      partes.length === 2 ? `${partes[1]}-${partes[0].padStart(2, '0')}` : '';
+
+    const aprovadosNoMes = prefixoData
+      ? todosAprovados.filter((a) => a.dataAtendimento.startsWith(prefixoData))
+      : [];
+
+    const baseCalculo =
+      aprovadosNoMes.length > 0 ? aprovadosNoMes : todosAprovados;
+
+    const totalHoras = baseCalculo.reduce(
+      (acc, curr) => acc + curr.horasTrabalhadas,
+      0
+    );
+    const valorBruto = baseCalculo.reduce(
+      (acc, curr) =>
+        acc +
+        (curr.valorTotal > 0
+          ? curr.valorTotal
+          : curr.horasTrabalhadas * (prestador?.valorBase || 0)),
+      0
+    );
+
+    const impostosRetidos = Number((valorBruto * 0.06).toFixed(2));
+    const valorLiquido = Number((valorBruto - impostosRetidos).toFixed(2));
 
     const lista = dbServiceFaturamento.getFaturamentos();
     const novoFechamento: FaturamentoPJ = {
@@ -170,30 +349,67 @@ export const dbServiceFaturamento = {
 
     const atualizados = [novoFechamento, ...lista];
     setStorage(STORAGE_KEYS.FATURAMENTO, atualizados);
+
+    // Gera automaticamente ordem de pagamento pendente correspondente ao fechamento
+    if (valorLiquido > 0) {
+      const pagamentosAtuais = dbServicePagamentos.getPagamentos();
+      const novoPagamento: PagamentoPJ = {
+        id: `pag-${Date.now()}`,
+        prestadorId,
+        prestadorNome: prestador ? prestador.nome : 'Prestador PJ',
+        competencia,
+        valorLiquido,
+        dataPagamento: '',
+        status: 'PENDENTE',
+        comprovanteCodigo: 'AGUARDANDO-PIX'
+      };
+      setStorage(STORAGE_KEYS.PAGAMENTOS, [novoPagamento, ...pagamentosAtuais]);
+    }
+
     return atualizados;
   }
 };
 
 export const dbServicePagamentos = {
-  getPagamentos: (): PagamentoPJ[] => getStorage(STORAGE_KEYS.PAGAMENTOS, pagamentosIniciais),
+  getPagamentos: (): PagamentoPJ[] =>
+    getStorage(STORAGE_KEYS.PAGAMENTOS, pagamentosIniciais),
 
-  quitarPagamento: (id: string, codigoComprovante: string): PagamentoPJ[] => {
+  getPagamentosPorEmpresa: (empresaId?: string): PagamentoPJ[] => {
     const lista = dbServicePagamentos.getPagamentos();
-    const atualizados = lista.map(p => p.id === id ? {
-      ...p,
-      status: 'QUITADO' as const,
-      dataPagamento: new Date().toISOString().split('T')[0],
-      comprovanteCodigo: codigoComprovante
-    } : p);
+    if (!empresaId) return lista;
+    const idsEquipe = new Set(
+      dbService.getPrestadoresPorEmpresa(empresaId).map((p) => p.id)
+    );
+    return lista.filter((p) => idsEquipe.has(p.prestadorId));
+  },
+
+  quitarPagamento: (
+    id: string,
+    codigoComprovante: string
+  ): PagamentoPJ[] => {
+    const lista = dbServicePagamentos.getPagamentos();
+    const atualizados = lista.map((p) =>
+      p.id === id
+        ? {
+            ...p,
+            status: 'QUITADO' as const,
+            dataPagamento: new Date().toISOString().split('T')[0],
+            comprovanteCodigo: codigoComprovante
+          }
+        : p
+    );
     setStorage(STORAGE_KEYS.PAGAMENTOS, atualizados);
     return atualizados;
   }
 };
 
 export const dbServiceEmpresas = {
-  getEmpresas: (): EmpresaTenant[] => getStorage(STORAGE_KEYS.EMPRESAS_TENANTS, empresasIniciais),
+  getEmpresas: (): EmpresaTenant[] =>
+    getStorage(STORAGE_KEYS.EMPRESAS_TENANTS, empresasIniciais),
 
-  salvarEmpresa: (nova: Omit<EmpresaTenant, 'id' | 'criadoEm'>): EmpresaTenant[] => {
+  salvarEmpresa: (
+    nova: Omit<EmpresaTenant, 'id' | 'criadoEm'>
+  ): EmpresaTenant[] => {
     const lista = dbServiceEmpresas.getEmpresas();
     const item: EmpresaTenant = {
       id: String(Date.now()),
@@ -205,9 +421,12 @@ export const dbServiceEmpresas = {
     return atualizados;
   },
 
-  atualizarStatusEmpresa: (id: string, status: 'ATIVO' | 'SUSPENSO'): EmpresaTenant[] => {
+  atualizarStatusEmpresa: (
+    id: string,
+    status: 'ATIVO' | 'SUSPENSO'
+  ): EmpresaTenant[] => {
     const lista = dbServiceEmpresas.getEmpresas();
-    const atualizados = lista.map(e => e.id === id ? { ...e, status } : e);
+    const atualizados = lista.map((e) => (e.id === id ? { ...e, status } : e));
     setStorage(STORAGE_KEYS.EMPRESAS_TENANTS, atualizados);
     return atualizados;
   }

@@ -1,7 +1,7 @@
-
 import React, { useState } from 'react';
-import { Shield, User, Key, Building2 } from 'lucide-react';
+import { Shield, User, Key, Building2, Eye, EyeOff } from 'lucide-react';
 import { dbService } from '../services/db';
+import { masterService } from '../services/masterService';
 import { useToast } from '../context/ToastContext';
 import type { UsuarioSistema } from '../types/usuario';
 
@@ -9,7 +9,7 @@ interface LoginProps {
   onLoginSuccess: (usuario: UsuarioSistema) => void;
 }
 
-const CREDENCIAIS_TESTE: Record<string, string> = {
+const SENHAS_PADRAO_SISTEMA: Record<string, string> = {
   Henrique_dev: '1234',
   gestor: '123',
   'mariana.costa': '123'
@@ -18,6 +18,7 @@ const CREDENCIAIS_TESTE: Record<string, string> = {
 export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
   const [usuario, setUsuario] = useState('');
   const [senha, setSenha] = useState('');
+  const [mostrarSenha, setMostrarSenha] = useState(false);
   const [carregando, setCarregando] = useState(false);
   const { showToast } = useToast();
 
@@ -26,48 +27,105 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
 
     if (carregando) return;
 
+    const identificador = usuario.trim();
+    if (!identificador || !senha) {
+      showToast('Preencha o usuario e a senha de acesso.', 'error');
+      return;
+    }
+
     setCarregando(true);
 
     try {
-      const usuarios = dbService.getUsuarios();
-      const usuarioEncontrado = usuarios.find(
+      // 1. Verifica acesso MASTER
+      const usuariosSistema = dbService.getUsuarios();
+      const contaMaster = usuariosSistema.find(
         (item) =>
-          (item.usuario.toLowerCase() === usuario.trim().toLowerCase() ||
-            item.email.toLowerCase() === usuario.trim().toLowerCase()) &&
-          item.ativo
+          item.perfil === 'MASTER' &&
+          (item.usuario.toLowerCase() === identificador.toLowerCase() ||
+            item.email.toLowerCase() === identificador.toLowerCase())
       );
 
-      if (!usuarioEncontrado) {
-        showToast('Usuário ou senha inválidos.', 'error');
-        return;
-      }
-
-      const senhaValida =
-        CREDENCIAIS_TESTE[usuarioEncontrado.usuario] === senha;
-
-      if (!senhaValida) {
-        showToast('Usuário ou senha inválidos.', 'error');
-        return;
-      }
-
-      if (
-        usuarioEncontrado.perfil === 'PRESTADOR' &&
-        usuarioEncontrado.prestadorId
-      ) {
-        const prestadorExiste = dbService
-          .getPrestadores()
-          .some((item) => item.id === usuarioEncontrado.prestadorId);
-
-        if (!prestadorExiste) {
-          showToast('Prestador vinculado não encontrado.', 'error');
+      if (contaMaster) {
+        if (!contaMaster.ativo) {
+          showToast('Conta Master desativada.', 'error');
           return;
         }
+        const senhaEsperada =
+          contaMaster.senha || SENHAS_PADRAO_SISTEMA[contaMaster.usuario];
+        if (senha !== senhaEsperada) {
+          showToast('Usuario ou senha invalidos.', 'error');
+          return;
+        }
+        showToast('Acesso Master realizado com sucesso.', 'success');
+        onLoginSuccess(contaMaster);
+        return;
+      }
+
+      // 2. Valida empresas, gestores e prestadores cadastrados na Area Master
+      const validacaoMaster = masterService.validarAutenticacaoUsuario(
+        identificador,
+        senha
+      );
+
+      if (validacaoMaster.permitido && validacaoMaster.usuario) {
+        const conta = validacaoMaster.usuario;
+        masterService.registrarLoginUsuario(conta.id);
+
+        const usuarioLogado: UsuarioSistema = {
+          id: conta.id,
+          empresaId: conta.empresaId,
+          empresaNome: conta.empresaNome,
+          nome: conta.nome,
+          email: conta.email,
+          usuario: conta.usuario || conta.email.split('@')[0],
+          senha: conta.senha,
+          perfil: conta.perfil === 'PJ' ? 'PRESTADOR' : conta.perfil,
+          prestadorId: conta.perfil === 'PJ' ? conta.id : undefined,
+          ativo: conta.status === 'ATIVO',
+          exigirTrocaSenha: conta.exigirTrocaSenha,
+          criadoEm: conta.dataCriacao
+        };
+
+        showToast(`Bem-vindo(a), ${usuarioLogado.nome}!`, 'success');
+        onLoginSuccess(usuarioLogado);
+        return;
+      }
+
+      // Se a empresa estiver suspensa ou conta bloqueada, exibe o motivo exato
+      if (validacaoMaster.usuario && validacaoMaster.motivo) {
+        showToast(validacaoMaster.motivo, 'error');
+        return;
+      }
+
+      // 3. Fallback para contas locais legadas do dbService
+      const usuarioLegado = usuariosSistema.find(
+        (item) =>
+          item.usuario.toLowerCase() === identificador.toLowerCase() ||
+          item.email.toLowerCase() === identificador.toLowerCase()
+      );
+
+      if (!usuarioLegado) {
+        showToast('Usuario ou senha invalidos.', 'error');
+        return;
+      }
+
+      if (!usuarioLegado.ativo) {
+        showToast('Usuario inativo. Contate o administrador.', 'error');
+        return;
+      }
+
+      const senhaLegadaValida =
+        (usuarioLegado.senha || SENHAS_PADRAO_SISTEMA[usuarioLegado.usuario]) === senha;
+
+      if (!senhaLegadaValida) {
+        showToast('Usuario ou senha invalidos.', 'error');
+        return;
       }
 
       showToast('Login realizado com sucesso.', 'success');
-      onLoginSuccess(usuarioEncontrado);
+      onLoginSuccess(usuarioLegado);
     } catch {
-      showToast('Não foi possível realizar a autenticação.', 'error');
+      showToast('Nao foi possivel realizar a autenticacao.', 'error');
     } finally {
       setCarregando(false);
     }
@@ -82,14 +140,14 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
           </div>
           <h1 className="text-2xl font-bold">ClinGest PJ</h1>
           <p className="text-slate-300 text-sm mt-1">
-            Plataforma de Gestão e Compliance em Saúde
+            Plataforma de Gestao e Compliance em Saude
           </p>
         </div>
 
         <form onSubmit={handleLoginSubmit} className="p-8 space-y-5">
           <div>
             <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
-              Usuário ou E-mail
+              Usuario ou E-mail
             </label>
             <div className="relative">
               <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400">
@@ -99,7 +157,7 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
                 type="text"
                 value={usuario}
                 onChange={(e) => setUsuario(e.target.value)}
-                placeholder="Digite seu usuário ou e-mail"
+                placeholder="Digite seu usuario ou e-mail"
                 className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:border-brand-teal"
                 autoComplete="username"
                 required
@@ -116,14 +174,22 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
                 <Key size={18} />
               </span>
               <input
-                type="password"
+                type={mostrarSenha ? 'text' : 'password'}
                 value={senha}
                 onChange={(e) => setSenha(e.target.value)}
                 placeholder="Digite sua senha"
-                className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:border-brand-teal"
+                className="w-full pl-10 pr-12 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:border-brand-teal"
                 autoComplete="current-password"
                 required
               />
+              <button
+                type="button"
+                onClick={() => setMostrarSenha(!mostrarSenha)}
+                className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 focus:outline-none"
+                title={mostrarSenha ? 'Ocultar senha' : 'Mostrar senha'}
+              >
+                {mostrarSenha ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
             </div>
           </div>
 

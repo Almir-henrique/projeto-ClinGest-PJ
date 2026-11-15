@@ -1,4 +1,9 @@
-export type StatusTarefa = 'EM_ANDAMENTO' | 'CONCLUIDA' | 'APROVADO';
+export type StatusTarefa =
+  | 'PENDENTE'
+  | 'EM_ANDAMENTO'
+  | 'CONCLUIDA'
+  | 'APROVADO'
+  | 'REJEITADO';
 
 export interface TarefaPJ {
   id: string;

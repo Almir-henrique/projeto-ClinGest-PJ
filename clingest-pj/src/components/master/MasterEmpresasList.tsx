@@ -5,7 +5,11 @@ import {
   Search,
   X,
   AlertCircle,
-  Settings2
+  Settings2,
+  Eye,
+  EyeOff,
+  CheckCircle2,
+  KeyRound
 } from 'lucide-react';
 import type {
   EmpresaComMetricas,
@@ -22,6 +26,14 @@ interface MasterEmpresasListProps {
   onEmpresaCadastrada: () => void;
 }
 
+interface CredenciaisCriadasResumo {
+  empresa: string;
+  gestor: string;
+  usuario: string;
+  email: string;
+  senha: string;
+}
+
 export const MasterEmpresasList: React.FC<MasterEmpresasListProps> = ({
   empresas,
   onAbrirEmpresa,
@@ -31,6 +43,7 @@ export const MasterEmpresasList: React.FC<MasterEmpresasListProps> = ({
   const [filtroStatus, setFiltroStatus] = useState<'TODOS' | StatusEmpresa>('TODOS');
   const [modalAberto, setModalAberto] = useState(false);
   const [erroFormulario, setErroFormulario] = useState<string | null>(null);
+  const [credenciaisCriadas, setCredenciaisCriadas] = useState<CredenciaisCriadasResumo | null>(null);
 
   const hoje = new Date().toISOString().split('T')[0];
   const proximoAno = new Date(new Date().setFullYear(new Date().getFullYear() + 1))
@@ -50,7 +63,10 @@ export const MasterEmpresasList: React.FC<MasterEmpresasListProps> = ({
   const [vigenciaInicio, setVigenciaInicio] = useState(hoje);
   const [vigenciaFim, setVigenciaFim] = useState(proximoAno);
   const [gestorNome, setGestorNome] = useState('');
+  const [gestorUsuario, setGestorUsuario] = useState('');
   const [gestorEmail, setGestorEmail] = useState('');
+  const [gestorSenhaInicial, setGestorSenhaInicial] = useState('');
+  const [mostrarSenhaGestor, setMostrarSenhaGestor] = useState(false);
 
   const { showToast } = useToast();
 
@@ -86,7 +102,10 @@ export const MasterEmpresasList: React.FC<MasterEmpresasListProps> = ({
     setVigenciaInicio(hoje);
     setVigenciaFim(proximoAno);
     setGestorNome('');
+    setGestorUsuario('');
     setGestorEmail('');
+    setGestorSenhaInicial('');
+    setMostrarSenhaGestor(false);
     setErroFormulario(null);
   };
 
@@ -114,6 +133,16 @@ export const MasterEmpresasList: React.FC<MasterEmpresasListProps> = ({
       return;
     }
 
+    if (!gestorUsuario.trim() || gestorUsuario.trim().length < 3) {
+      setErroFormulario('Informe um usuario de acesso com pelo menos 3 caracteres.');
+      return;
+    }
+
+    if (!gestorSenhaInicial.trim() || gestorSenhaInicial.trim().length < 4) {
+      setErroFormulario('Informe uma senha inicial com pelo menos 4 caracteres.');
+      return;
+    }
+
     const payload: NovaEmpresaInput = {
       razaoSocial,
       nomeFantasia,
@@ -128,15 +157,24 @@ export const MasterEmpresasList: React.FC<MasterEmpresasListProps> = ({
       vigenciaInicio,
       vigenciaFim,
       gestorNome,
-      gestorEmail
+      gestorUsuario: gestorUsuario.trim(),
+      gestorEmail,
+      gestorSenhaInicial: gestorSenhaInicial.trim()
     };
 
     try {
-      masterService.cadastrarEmpresa(payload);
+      const empresaCriada = masterService.cadastrarEmpresa(payload);
+      setCredenciaisCriadas({
+        empresa: empresaCriada.nomeFantasia,
+        gestor: gestorNome.trim(),
+        usuario: empresaCriada.credenciaisGestor.usuario,
+        email: empresaCriada.credenciaisGestor.email,
+        senha: empresaCriada.credenciaisGestor.senha
+      });
       onEmpresaCadastrada();
       setModalAberto(false);
       limparFormulario();
-      showToast('Empresa e gestor principal cadastrados com sucesso', 'success');
+      showToast('Empresa e credenciais de acesso cadastradas com sucesso!', 'success');
     } catch (err) {
       const mensagem =
         err instanceof Error ? err.message : 'Nao foi possivel cadastrar a empresa.';
@@ -150,7 +188,7 @@ export const MasterEmpresasList: React.FC<MasterEmpresasListProps> = ({
         <div>
           <h2 className="text-xl font-bold text-slate-900">Empresas Contratantes</h2>
           <p className="text-sm text-slate-500 mt-0.5">
-            Gerencie clinicas e empresas clientes, limites de licencas PJ e vigencia dos contratos.
+            Gerencie clinicas e empresas clientes, limites de licencas PJ e credenciais de acesso ao painel proprio.
           </p>
         </div>
 
@@ -162,6 +200,37 @@ export const MasterEmpresasList: React.FC<MasterEmpresasListProps> = ({
           Nova Empresa
         </button>
       </div>
+
+      {credenciaisCriadas && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <CheckCircle2 size={20} className="text-emerald-600 shrink-0 mt-0.5" />
+            <div className="space-y-1 text-xs text-emerald-950">
+              <p className="font-bold text-sm text-emerald-900">
+                Acesso liberado para {credenciaisCriadas.empresa}
+              </p>
+              <p>
+                <span className="font-semibold">Gestor:</span> {credenciaisCriadas.gestor} |{' '}
+                <span className="font-semibold">Usuario:</span>{' '}
+                <code className="px-1.5 py-0.5 bg-white border border-emerald-200 rounded font-mono font-bold">
+                  {credenciaisCriadas.usuario}
+                </code>{' '}
+                | <span className="font-semibold">Senha:</span>{' '}
+                <code className="px-1.5 py-0.5 bg-white border border-emerald-200 rounded font-mono font-bold">
+                  {credenciaisCriadas.senha}
+                </code>
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setCredenciaisCriadas(null)}
+            className="text-emerald-700 hover:text-emerald-900 p-1 self-end sm:self-center"
+            title="Fechar aviso"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
 
       <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
         <div className="relative flex-1 max-w-md">
@@ -489,8 +558,9 @@ export const MasterEmpresasList: React.FC<MasterEmpresasListProps> = ({
 
               <div className="space-y-4">
                 <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                    3. Gestor Principal da Empresa
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                    <KeyRound size={14} className="text-indigo-600" />
+                    3. Credenciais de Acesso da Empresa (Gestor)
                   </h4>
                   <span className="text-xs text-slate-400">
                     Gestores nao consomem licencas PJ
@@ -512,7 +582,7 @@ export const MasterEmpresasList: React.FC<MasterEmpresasListProps> = ({
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      E-mail de Acesso do Gestor
+                      E-mail do Gestor
                     </label>
                     <input
                       type="email"
@@ -522,6 +592,45 @@ export const MasterEmpresasList: React.FC<MasterEmpresasListProps> = ({
                       className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-900 focus:outline-none focus:border-indigo-500"
                       required
                     />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Usuario de Login da Empresa
+                    </label>
+                    <input
+                      type="text"
+                      value={gestorUsuario}
+                      onChange={(e) => setGestorUsuario(e.target.value)}
+                      placeholder="Ex: clinica.exemplo"
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-900 focus:outline-none focus:border-indigo-500"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Senha de Acesso
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={mostrarSenhaGestor ? 'text' : 'password'}
+                        value={gestorSenhaInicial}
+                        onChange={(e) => setGestorSenhaInicial(e.target.value)}
+                        placeholder="Minimo 4 caracteres"
+                        className="w-full pl-3 pr-10 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-900 focus:outline-none focus:border-indigo-500"
+                        required
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setMostrarSenhaGestor(!mostrarSenhaGestor)}
+                        className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600"
+                        title={mostrarSenhaGestor ? 'Ocultar senha' : 'Mostrar senha'}
+                      >
+                        {mostrarSenhaGestor ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>

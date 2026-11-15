@@ -43,6 +43,7 @@ export interface UsuarioContaMaster {
   empresaId: string;
   empresaNome: string;
   nome: string;
+  usuario?: string;
   email: string;
   senha?: string;
   senhaProvisoria?: string;
@@ -91,6 +92,7 @@ export interface NovaEmpresaInput {
   vigenciaInicio: string;
   vigenciaFim: string;
   gestorNome: string;
+  gestorUsuario?: string;
   gestorEmail: string;
   gestorSenhaInicial?: string;
 }

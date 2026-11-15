@@ -10,7 +10,15 @@ import { PainelRelatorios } from './pages/PainelRelatorios';
 import { dbService } from './services/db';
 import type { UsuarioSistema } from './types/usuario';
 import type { PrestadorPJ } from './types/prestador';
-import { LogOut, Users, CheckSquare, Building, DollarSign, CreditCard, BarChart3 } from 'lucide-react';
+import {
+  LogOut,
+  Users,
+  CheckSquare,
+  Building,
+  DollarSign,
+  CreditCard,
+  BarChart3
+} from 'lucide-react';
 
 export function App() {
   const [usuarioLogado, setUsuarioLogado] = useState<UsuarioSistema | null>(null);
@@ -19,10 +27,35 @@ export function App() {
 
   const handleLoginSuccess = (usuario: UsuarioSistema) => {
     setUsuarioLogado(usuario);
-    if (usuario.perfil === 'PRESTADOR' && usuario.prestadorId) {
+
+    if (usuario.perfil === 'PRESTADOR') {
       const prestadores = dbService.getPrestadores();
-      const p = prestadores.find(item => item.id === usuario.prestadorId);
-      setPrestadorObj(p);
+      const encontrado = prestadores.find(
+        (item) =>
+          (usuario.prestadorId && item.id === usuario.prestadorId) ||
+          item.email.toLowerCase() === usuario.email.toLowerCase()
+      );
+
+      if (encontrado) {
+        setPrestadorObj(encontrado);
+      } else {
+        setPrestadorObj({
+          id: usuario.prestadorId || usuario.id,
+          empresaId: usuario.empresaId,
+          nome: usuario.nome,
+          razaoSocial: `${usuario.nome} Servicos Medicos LTDA`,
+          cnpj: '00.000.000/0001-00',
+          email: usuario.email,
+          servico: 'Atendimento Clinico PJ',
+          remuneracao: 'POR_HORA',
+          valorBase: 0,
+          contratoStatus: 'VIGENTE',
+          situacao: usuario.ativo ? 'ATIVO' : 'INATIVO',
+          usuario: usuario.usuario,
+          criadoEm: usuario.criadoEm
+        });
+      }
+
       setAbaAtiva('prestador');
     } else if (usuario.perfil === 'MASTER') {
       setAbaAtiva('master');
@@ -55,7 +88,16 @@ export function App() {
                 <Building size={20} />
               </div>
               <div>
-                <h1 className="font-bold text-base leading-tight">ClinGest PJ</h1>
+                <div className="flex items-center gap-2">
+                  <h1 className="font-bold text-base leading-tight">
+                    {usuarioLogado.empresaNome || 'ClinGest PJ'}
+                  </h1>
+                  {usuarioLogado.empresaNome && (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700 font-medium">
+                      ClinGest PJ
+                    </span>
+                  )}
+                </div>
                 <p className="text-xs text-slate-400">
                   Perfil de Acesso:{' '}
                   <span className="text-brand-teal uppercase font-semibold">
@@ -77,7 +119,7 @@ export function App() {
                     }`}
                   >
                     <CheckSquare size={14} />
-                    Atendimentos
+                    Gestao & Equipe PJ
                   </button>
                   <button
                     onClick={() => setAbaAtiva('faturamento')}
@@ -110,7 +152,7 @@ export function App() {
                     }`}
                   >
                     <BarChart3 size={14} />
-                    Relatórios
+                    Relatorios
                   </button>
                 </>
               )}
@@ -138,7 +180,7 @@ export function App() {
               <button
                 onClick={handleLogout}
                 className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
-                title="Encerrar Sessão"
+                title="Encerrar Sessao"
               >
                 <LogOut size={16} />
               </button>
@@ -154,10 +196,16 @@ export function App() {
               onLogout={handleLogout}
             />
           )}
-          {abaAtiva === 'gestor' && <PainelGestor />}
-          {abaAtiva === 'faturamento' && <PainelFaturamento />}
-          {abaAtiva === 'pagamentos' && <PainelPagamentos />}
-          {abaAtiva === 'relatorios' && <PainelRelatorios />}
+          {abaAtiva === 'gestor' && <PainelGestor usuarioLogado={usuarioLogado} />}
+          {abaAtiva === 'faturamento' && (
+            <PainelFaturamento usuarioLogado={usuarioLogado} />
+          )}
+          {abaAtiva === 'pagamentos' && (
+            <PainelPagamentos usuarioLogado={usuarioLogado} />
+          )}
+          {abaAtiva === 'relatorios' && (
+            <PainelRelatorios usuarioLogado={usuarioLogado} />
+          )}
           {abaAtiva === 'prestador' && prestadorObj && (
             <PortalPrestador prestadorLogado={prestadorObj} />
           )}

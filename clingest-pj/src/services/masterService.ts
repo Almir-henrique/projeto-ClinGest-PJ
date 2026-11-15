@@ -12,11 +12,13 @@ import type {
   StatusUsuarioSistema,
   UsuarioContaMaster
 } from '../types/master';
+import type { UsuarioSistema } from '../types/usuario';
 
 const STORAGE_EMPRESAS = 'clingest_empresas_saas';
 const STORAGE_USUARIOS_MASTER = 'clingest_usuarios_admin';
 const STORAGE_LOGS_MASTER = 'clingest_logs_master';
 const STORAGE_PRESTADORES_SISTEMA = '@clingest_prestadores';
+const STORAGE_USUARIOS_SISTEMA = '@clingest_usuarios';
 
 interface RegistroPrestadorLegado {
   id: string;
@@ -91,6 +93,7 @@ const USUARIOS_INICIAIS: UsuarioContaMaster[] = [
     empresaId: 'emp-001',
     empresaNome: 'Clinica Boa Viagem Saude',
     nome: 'Dr. Roberto Almeida',
+    usuario: 'roberto.almeida',
     email: 'roberto.almeida@clinicaboaviagem.com.br',
     senha: '123',
     perfil: 'GESTOR',
@@ -103,6 +106,7 @@ const USUARIOS_INICIAIS: UsuarioContaMaster[] = [
     empresaId: 'emp-001',
     empresaNome: 'Clinica Boa Viagem Saude',
     nome: 'Dra. Camila Vasconcelos',
+    usuario: 'camila.vasconcelos',
     email: 'camila.vasconcelos@medpj.com.br',
     senha: '123',
     perfil: 'PJ',
@@ -115,6 +119,7 @@ const USUARIOS_INICIAIS: UsuarioContaMaster[] = [
     empresaId: 'emp-001',
     empresaNome: 'Clinica Boa Viagem Saude',
     nome: 'Dr. Felipe Montenegro',
+    usuario: 'felipe.montenegro',
     email: 'felipe.montenegro@medpj.com.br',
     senha: '123',
     perfil: 'PJ',
@@ -127,6 +132,7 @@ const USUARIOS_INICIAIS: UsuarioContaMaster[] = [
     empresaId: 'emp-002',
     empresaNome: 'Hospital Recife Norte',
     nome: 'Mariana Costa',
+    usuario: 'mariana.gestor',
     email: 'mariana.costa@hospitalrecifenorte.com.br',
     senha: '123',
     perfil: 'GESTOR',
@@ -139,6 +145,7 @@ const USUARIOS_INICIAIS: UsuarioContaMaster[] = [
     empresaId: 'emp-002',
     empresaNome: 'Hospital Recife Norte',
     nome: 'Dr. Lucas Andrade',
+    usuario: 'lucas.andrade',
     email: 'lucas.andrade@medpj.com.br',
     senha: '123',
     perfil: 'PJ',
@@ -151,6 +158,7 @@ const USUARIOS_INICIAIS: UsuarioContaMaster[] = [
     empresaId: 'emp-003',
     empresaNome: 'Integrada Saude',
     nome: 'Fernanda Lins',
+    usuario: 'fernanda.lins',
     email: 'fernanda@integrada.med.br',
     senha: '123',
     perfil: 'GESTOR',
@@ -187,9 +195,48 @@ function gerarSenhaProvisoria(): string {
   return `Clin@${codigo}`;
 }
 
+function sincronizarUsuarioNoDbSistema(conta: UsuarioContaMaster): void {
+  const usuariosSistema = lerListaStorage<UsuarioSistema>(STORAGE_USUARIOS_SISTEMA, []);
+  const loginUsuario = (conta.usuario || conta.email.split('@')[0]).trim();
+  const perfilSistema = conta.perfil === 'PJ' ? 'PRESTADOR' : conta.perfil;
+
+  const indice = usuariosSistema.findIndex(
+    (u) => u.id === conta.id || u.email.toLowerCase() === conta.email.toLowerCase()
+  );
+
+  const registroAtualizado: UsuarioSistema = {
+    id: conta.id,
+    empresaId: conta.empresaId,
+    empresaNome: conta.empresaNome,
+    nome: conta.nome,
+    email: conta.email,
+    usuario: loginUsuario,
+    senha: conta.senha || conta.senhaProvisoria || '123',
+    perfil: perfilSistema,
+    prestadorId: conta.perfil === 'PJ' ? conta.id : undefined,
+    ativo: conta.status === 'ATIVO',
+    exigirTrocaSenha: conta.exigirTrocaSenha,
+    criadoEm: conta.dataCriacao
+  };
+
+  if (indice !== -1) {
+    const atualizados = [...usuariosSistema];
+    atualizados[indice] = { ...atualizados[indice], ...registroAtualizado };
+    salvarStorage(STORAGE_USUARIOS_SISTEMA, atualizados);
+  } else {
+    salvarStorage(STORAGE_USUARIOS_SISTEMA, [registroAtualizado, ...usuariosSistema]);
+  }
+}
+
 function obterUsuariosConsolidados(): UsuarioContaMaster[] {
-  const usuariosAdmin = lerListaStorage<UsuarioContaMaster>(STORAGE_USUARIOS_MASTER, USUARIOS_INICIAIS);
-  const prestadoresBrutos = lerListaStorage<RegistroPrestadorLegado>(STORAGE_PRESTADORES_SISTEMA, []);
+  const usuariosAdmin = lerListaStorage<UsuarioContaMaster>(
+    STORAGE_USUARIOS_MASTER,
+    USUARIOS_INICIAIS
+  );
+  const prestadoresBrutos = lerListaStorage<RegistroPrestadorLegado>(
+    STORAGE_PRESTADORES_SISTEMA,
+    []
+  );
 
   const emailsExistentes = new Set(usuariosAdmin.map((u) => u.email.toLowerCase()));
   const empresas = lerListaStorage<EmpresaSaaS>(STORAGE_EMPRESAS, EMPRESAS_INICIAIS);
@@ -213,6 +260,7 @@ function obterUsuariosConsolidados(): UsuarioContaMaster[] {
           empresaId: empresaVinculada.id,
           empresaNome: empresaVinculada.nomeFantasia,
           nome: p.nome,
+          usuario: emailNormalizado.split('@')[0],
           email: emailNormalizado,
           senha: p.senha || '123',
           perfil: 'PJ',
@@ -286,7 +334,11 @@ export const masterService = {
     }));
   },
 
-  cadastrarEmpresa(dados: NovaEmpresaInput): EmpresaComMetricas {
+  cadastrarEmpresa(
+    dados: NovaEmpresaInput
+  ): EmpresaComMetricas & {
+    credenciaisGestor: { usuario: string; email: string; senha: string };
+  } {
     const empresasAtuais = this.getEmpresas();
     const cnpjLimpo = dados.cnpj.replace(/\D/g, '');
 
@@ -298,17 +350,34 @@ export const masterService = {
     }
 
     const todosUsuarios = obterUsuariosConsolidados();
+    const usuariosSistema = lerListaStorage<UsuarioSistema>(STORAGE_USUARIOS_SISTEMA, []);
     const emailGestorNormalizado = dados.gestorEmail.trim().toLowerCase();
-    const emailDuplicado = todosUsuarios.some(
-      (u) => u.email.toLowerCase() === emailGestorNormalizado
-    );
+    const usuarioGestorNormalizado = (
+      dados.gestorUsuario?.trim() || emailGestorNormalizado.split('@')[0]
+    ).toLowerCase();
+
+    const emailDuplicado =
+      todosUsuarios.some((u) => u.email.toLowerCase() === emailGestorNormalizado) ||
+      usuariosSistema.some((u) => u.email.toLowerCase() === emailGestorNormalizado);
+
     if (emailDuplicado) {
       throw new Error('O e-mail informado para o gestor ja esta em uso na plataforma.');
+    }
+
+    const usuarioDuplicado =
+      todosUsuarios.some(
+        (u) => (u.usuario || u.email.split('@')[0]).toLowerCase() === usuarioGestorNormalizado
+      ) ||
+      usuariosSistema.some((u) => u.usuario.toLowerCase() === usuarioGestorNormalizado);
+
+    if (usuarioDuplicado) {
+      throw new Error('O nome de usuario informado para o gestor ja esta em uso.');
     }
 
     const hoje = new Date().toISOString().split('T')[0];
     const novoIdEmpresa = `emp-${Date.now()}`;
     const senhaInicial = dados.gestorSenhaInicial?.trim() || gerarSenhaProvisoria();
+    const usuarioFinal = dados.gestorUsuario?.trim() || usuarioGestorNormalizado;
 
     const novaEmpresa: EmpresaSaaS = {
       id: novoIdEmpresa,
@@ -339,6 +408,7 @@ export const masterService = {
       empresaId: novoIdEmpresa,
       empresaNome: novaEmpresa.nomeFantasia,
       nome: dados.gestorNome.trim(),
+      usuario: usuarioFinal,
       email: emailGestorNormalizado,
       senha: senhaInicial,
       senhaProvisoria: senhaInicial,
@@ -346,22 +416,28 @@ export const masterService = {
       dataCriacao: hoje,
       ultimoLogin: 'Nunca acessou',
       status: 'ATIVO',
-      exigirTrocaSenha: true
+      exigirTrocaSenha: !dados.gestorSenhaInicial?.trim()
     };
 
     salvarStorage(STORAGE_EMPRESAS, [novaEmpresa, ...empresasAtuais]);
     salvarStorage(STORAGE_USUARIOS_MASTER, [novoGestor, ...usuariosAdmin]);
+    sincronizarUsuarioNoDbSistema(novoGestor);
 
     this.registrarLog(
       'CADASTRO_EMPRESA',
-      `Empresa ${novaEmpresa.nomeFantasia} cadastrada no plano ${novaEmpresa.plano} (${novaEmpresa.licencasContratadas} licencas) com gestor ${novoGestor.email} e credencial provisoria gerada.`,
+      `Empresa ${novaEmpresa.nomeFantasia} cadastrada no plano ${novaEmpresa.plano} (${novaEmpresa.licencasContratadas} licencas) com usuario gestor "${novoGestor.usuario}" (${novoGestor.email}).`,
       novaEmpresa.id,
       novaEmpresa.nomeFantasia
     );
 
     return {
       ...novaEmpresa,
-      metricas: this.calcularMetricasEmpresa(novaEmpresa)
+      metricas: this.calcularMetricasEmpresa(novaEmpresa),
+      credenciaisGestor: {
+        usuario: usuarioFinal,
+        email: emailGestorNormalizado,
+        senha: senhaInicial
+      }
     };
   },
 
@@ -417,6 +493,10 @@ export const masterService = {
       u.empresaId === empresaId ? { ...u, empresaNome: empresaAtualizada.nomeFantasia } : u
     );
     salvarStorage(STORAGE_USUARIOS_MASTER, usuariosAtualizados);
+
+    usuariosAtualizados
+      .filter((u) => u.empresaId === empresaId)
+      .forEach((u) => sincronizarUsuarioNoDbSistema(u));
 
     this.registrarLog(
       'ATUALIZACAO_CONTRATO_EMPRESA',
@@ -539,6 +619,8 @@ export const masterService = {
       salvarStorage(STORAGE_USUARIOS_MASTER, [usuarioAtualizado, ...usuariosAdmin]);
     }
 
+    sincronizarUsuarioNoDbSistema(usuarioAtualizado);
+
     const prestadoresLegados = lerListaStorage<RegistroPrestadorLegado>(
       STORAGE_PRESTADORES_SISTEMA,
       []
@@ -613,6 +695,8 @@ export const masterService = {
       salvarStorage(STORAGE_USUARIOS_MASTER, [usuarioAtualizado, ...usuariosAdmin]);
     }
 
+    sincronizarUsuarioNoDbSistema(usuarioAtualizado);
+
     this.registrarLog(
       'REDEFINICAO_SENHA_USUARIO',
       `Fluxo seguro de redefinicao de senha iniciado para ${alvo.nome} (${alvo.email}). Protocolo ${protocolo}. Troca obrigatoria exigida no proximo acesso.`,
@@ -662,6 +746,8 @@ export const masterService = {
     } else {
       salvarStorage(STORAGE_USUARIOS_MASTER, [usuarioAtualizado, ...usuariosAdmin]);
     }
+
+    sincronizarUsuarioNoDbSistema(usuarioAtualizado);
 
     const prestadoresLegados = lerListaStorage<RegistroPrestadorLegado>(
       STORAGE_PRESTADORES_SISTEMA,
@@ -848,16 +934,18 @@ export const masterService = {
     return { permitido: true, empresa };
   },
 
-  validarAutenticacaoUsuario(email: string, senha?: string): ResultadoValidacaoAcesso {
-    const emailNormalizado = email.trim().toLowerCase();
+  validarAutenticacaoUsuario(identificador: string, senha?: string): ResultadoValidacaoAcesso {
+    const termoNormalizado = identificador.trim().toLowerCase();
     const usuario = obterUsuariosConsolidados().find(
-      (u) => u.email.toLowerCase() === emailNormalizado
+      (u) =>
+        u.email.toLowerCase() === termoNormalizado ||
+        (u.usuario && u.usuario.toLowerCase() === termoNormalizado)
     );
 
     if (!usuario) {
       return {
         permitido: false,
-        motivo: 'Usuario nao encontrado na base de contas.'
+        motivo: 'Usuario ou e-mail nao encontrado na base de contas.'
       };
     }
 
@@ -874,7 +962,7 @@ export const masterService = {
       if (senha !== senhaEsperada) {
         return {
           permitido: false,
-          motivo: 'Usuario ou senha invalidos.'
+          motivo: 'Senha incorreta.'
         };
       }
     }
