@@ -1,19 +1,17 @@
-export type StatusTarefa =
-  | 'PENDENTE'
-  | 'EM_ANDAMENTO'
-  | 'CONCLUIDA'
-  | 'APROVADO'
-  | 'REJEITADO';
+export type StatusTarefa = 'PENDENTE' | 'APROVADO' | 'PAGO' | 'REJEITADO';
 
 export interface TarefaPJ {
   id: string;
+  empresaId: string;
   prestadorId: string;
   prestadorNome: string;
   titulo: string;
-  descricao: string;
+  descricao?: string;
   pacienteNome?: string;
-  horasTrabalhadas?: number;
-  prazo: string;
-  status: StatusTarefa;
+  horasTrabalhadas: number;
+  valorUnitario: number;
   valorEntrega: number;
+  status: StatusTarefa;
+  prazo: string;
+  dataPagamento?: string;
 }

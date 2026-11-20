@@ -1,20 +1,19 @@
-﻿export type TipoRemuneracao = 'POR_HORA' | 'FIXO' | 'MISTO';
-export type StatusContrato = 'VIGENTE' | 'VENCENDO' | 'RESCINDIDO';
-export type SituacaoPrestador = 'ATIVO' | 'INATIVO';
+﻿import type { ModalidadeContrato } from './contrato';
 
 export interface PrestadorPJ {
   id: string;
-  empresaId?: string; 
+  empresaId: string;
   nome: string;
   razaoSocial: string;
   cnpj: string;
   email: string;
+  senha: string;
   servico: string;
-  remuneracao: TipoRemuneracao;
+  remuneracao: ModalidadeContrato;
   valorBase: number;
-  contratoStatus: StatusContrato;
-  situacao: SituacaoPrestador;
-  usuario?: string;
-  senha?: string;
+  contratoStatus: 'VIGENTE' | 'ENCERRADO';
+  situacao: 'ATIVO' | 'INATIVO';
+  dataEntrada: string;
+  dataSaida?: string;
   criadoEm: string;
 }

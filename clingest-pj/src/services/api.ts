@@ -1,573 +1,513 @@
+import type { EmpresaTenant, RegraNegocioSaaS } from '../types/contrato';
 import type { PrestadorPJ } from '../types/prestador';
-import type { DocumentoCompliance } from '../types/compliance';
-import type { FaturamentoPJ, StatusFaturamento } from '../types/faturamento';
-import type { TarefaPJ, StatusTarefa } from '../types/tarefa';
-import type { EmpresaTenant } from '../types/contrato';
-import type { AtendimentoPJ } from '../types/atendimento';
-import type { UsuarioSistema } from '../types/usuario';
-
-export interface ContratoPJ {
-  id: string;
-  prestadorId: string;
-  prestadorNome: string;
-  numeroContrato: string;
-  dataInicio: string;
-  dataTermino: string;
-  valorMensal: number;
-  status: 'VIGENTE' | 'VENCENDO' | 'RESCINDIDO';
-}
-
-export interface NotaFiscalPJ {
-  id: string;
-  prestadorId: string;
-  prestadorNome: string;
-  competencia: string;
-  numeroNF: string;
-  valor: number;
-  arquivoNome: string;
-  status: 'PENDENTE' | 'APROVADO' | 'REJEITADA' | 'HOMOLOGADO';
-  dataUpload: string;
-  urlArquivo?: string;
-}
-
-export interface AuditLog {
-  id: string;
-  dataHora: string;
-  acao: string;
-  usuario: string;
-  detalhes: string;
-}
-
-export interface ChamadoPJ {
-  id: string;
-  prestadorId: string;
-  prestadorNome: string;
-  assunto: string;
-  mensagem: string;
-  status: 'ABERTO' | 'RESPONDIDO';
-  respostaAdmin?: string;
-  dataCriacao: string;
-}
+import type { StatusTarefa, TarefaPJ } from '../types/tarefa';
+import type {
+  CredencialMasterView,
+  RegistroMovimentacaoAcesso,
+  UsuarioSistema
+} from '../types/usuario';
 
 const STORAGE_KEYS = {
-  PRESTADORES: '@clingest_prestadores',
-  COMPLIANCE: '@clingest_compliance',
-  CONTRATOS: '@clingest_contratos',
-  NOTAS_FISCAIS: '@clingest_nfs',
-  AUDIT_LOGS: '@clingest_audit',
-  CHAMADOS: '@clingest_chamados',
-  FATURAMENTO: '@clingest_faturamento',
-  TAREFAS: '@clingest_tarefas',
-  ATENDIMENTOS: '@clingest_atendimentos',
-  USUARIOS: '@clingest_usuarios',
-  USUARIOS_MASTER: 'clingest_usuarios_admin',
-  EMPRESAS_TENANTS: '@clingest_empresas_tenants'
+  EMPRESAS: '@clingest_core_empresas',
+  PRESTADORES: '@clingest_core_prestadores',
+  TAREFAS: '@clingest_core_tarefas',
+  REGRAS: '@clingest_core_regras',
+  ACESSOS: '@clingest_core_acessos',
+  SESSAO: '@clingest_core_sessao'
 };
 
-function sincronizarTarefaComAtendimento(tarefa: TarefaPJ): void {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEYS.ATENDIMENTOS);
-    const atendimentos: AtendimentoPJ[] = raw ? JSON.parse(raw) : [];
+const MASTER_PADRAO = {
+  id: 'master-root',
+  nome: 'Henrique Master',
+  email: 'henrique@clingest.com',
+  senha: '123456',
+  perfil: 'MASTER' as const,
+  empresaId: 'global',
+  empresaNome: 'Clingest SaaS'
+};
 
-    const horas = tarefa.horasTrabalhadas ?? 0;
-    const valorHora =
-      horas > 0 ? Number((tarefa.valorEntrega / horas).toFixed(2)) : 0;
+const REGRAS_PADRAO: RegraNegocioSaaS = {
+  bloquearExcessoLicencas: true,
+  valorAdicionalLicenca: 0,
+  exigirAprovacaoEntrega: true,
+  permitirContratoHora: true,
+  permitirContratoPlantao: true,
+  permitirContratoMensal: true,
+  limitePadraoLicencas: 10,
+  mensalidadePadrao: 1490
+};
 
-    const statusAtendimento =
-      tarefa.status === 'APROVADO'
-        ? 'APROVADO'
-        : tarefa.status === 'REJEITADO'
-        ? 'REJEITADO'
-        : 'PENDENTE';
+function gerarId(prefixo: string): string {
+  return `${prefixo}-${Math.random().toString(36).substring(2, 10)}`;
+}
 
-    const atendimentoEquivalente: AtendimentoPJ = {
-      id: `tar-${tarefa.id}`,
-      prestadorId: tarefa.prestadorId,
-      clienteId: 'cl1',
-      pacienteNome: tarefa.pacienteNome || tarefa.titulo,
-      dataAtendimento: tarefa.prazo || new Date().toISOString().split('T')[0],
-      horasTrabalhadas: horas,
-      valorHoraAplicado: valorHora,
-      valorTotal: tarefa.valorEntrega,
-      status: statusAtendimento
-    };
+function hojeISO(): string {
+  return new Date().toISOString().split('T')[0];
+}
 
-    const existe = atendimentos.some((a) => a.id === atendimentoEquivalente.id);
-    const atualizados = existe
-      ? atendimentos.map((a) =>
-          a.id === atendimentoEquivalente.id ? atendimentoEquivalente : a
-        )
-      : [atendimentoEquivalente, ...atendimentos];
+function agoraFormatado(): string {
+  const agora = new Date();
+  return `${agora.toLocaleDateString('pt-BR')} ${agora.toLocaleTimeString('pt-BR', {
+    hour: '2-digit',
+    minute: '2-digit'
+  })}`;
+}
 
-    localStorage.setItem(STORAGE_KEYS.ATENDIMENTOS, JSON.stringify(atualizados));
-  } catch {
-    // Ignora falha de leitura no storage secundário
+function garantirDadosIniciais(): void {
+  if (!localStorage.getItem(STORAGE_KEYS.REGRAS)) {
+    localStorage.setItem(STORAGE_KEYS.REGRAS, JSON.stringify(REGRAS_PADRAO));
+  }
+
+  if (!localStorage.getItem(STORAGE_KEYS.EMPRESAS)) {
+    const empresasIniciais: EmpresaTenant[] = [
+      {
+        id: 'emp-1',
+        nomeFantasia: 'Hospital São Lucas',
+        razaoSocial: 'São Lucas Serviços Médicos Ltda',
+        cnpj: '98.765.432/0001-12',
+        limitePrestadores: 10,
+        valorMensalidade: 1490,
+        status: 'ATIVO',
+        responsavelNome: 'Dr. Carlos Mendes',
+        responsavelEmail: 'gestor@saolucas.com.br',
+        senhaGestor: '123456',
+        criadoEm: '2026-10-01'
+      }
+    ];
+    localStorage.setItem(STORAGE_KEYS.EMPRESAS, JSON.stringify(empresasIniciais));
+  }
+
+  if (!localStorage.getItem(STORAGE_KEYS.PRESTADORES)) {
+    const prestadoresIniciais: PrestadorPJ[] = [
+      {
+        id: 'pj-1',
+        empresaId: 'emp-1',
+        nome: 'Mariana Costa',
+        razaoSocial: 'Costa Saúde S/S',
+        cnpj: '12.345.678/0001-90',
+        email: 'mariana.costa@clinica.com',
+        senha: '123',
+        servico: 'Enfermagem UTI',
+        remuneracao: 'PLANTAO',
+        valorBase: 650,
+        contratoStatus: 'VIGENTE',
+        situacao: 'ATIVO',
+        dataEntrada: '2026-10-02',
+        criadoEm: '2026-10-02'
+      }
+    ];
+    localStorage.setItem(
+      STORAGE_KEYS.PRESTADORES,
+      JSON.stringify(prestadoresIniciais)
+    );
+  }
+
+  if (!localStorage.getItem(STORAGE_KEYS.TAREFAS)) {
+    const tarefasIniciais: TarefaPJ[] = [
+      {
+        id: 'tar-1',
+        empresaId: 'emp-1',
+        prestadorId: 'pj-1',
+        prestadorNome: 'Mariana Costa',
+        titulo: 'Plantão Noturno UTI - Ala A',
+        horasTrabalhadas: 2,
+        valorUnitario: 650,
+        valorEntrega: 1300,
+        status: 'PAGO',
+        prazo: '2026-11-10',
+        dataPagamento: '2026-11-15'
+      },
+      {
+        id: 'tar-2',
+        empresaId: 'emp-1',
+        prestadorId: 'pj-1',
+        prestadorNome: 'Mariana Costa',
+        titulo: 'Plantão Diurno UTI - Ala B',
+        horasTrabalhadas: 1,
+        valorUnitario: 650,
+        valorEntrega: 650,
+        status: 'APROVADO',
+        prazo: '2026-11-18'
+      }
+    ];
+    localStorage.setItem(STORAGE_KEYS.TAREFAS, JSON.stringify(tarefasIniciais));
+  }
+
+  if (!localStorage.getItem(STORAGE_KEYS.ACESSOS)) {
+    localStorage.setItem(STORAGE_KEYS.ACESSOS, JSON.stringify([]));
   }
 }
 
+garantirDadosIniciais();
+
 export const apiEmpresas = {
-  getEmpresas: async (): Promise<EmpresaTenant[]> => {
-    const data = localStorage.getItem(STORAGE_KEYS.EMPRESAS_TENANTS);
-    if (!data) {
-      const inicial: EmpresaTenant[] = [
-        {
-          id: 'emp1',
-          nomeFantasia: 'Hospital Sao Lucas',
-          razaoSocial: 'Sao Lucas Servicos Medicos Ltda',
-          cnpj: '98.765.432/0001-12',
-          limitePrestadores: 15,
-          valorMensalidade: 1490.0,
-          status: 'ATIVO',
-          criadoEm: '2026-10-01'
-        }
-      ];
-      localStorage.setItem(STORAGE_KEYS.EMPRESAS_TENANTS, JSON.stringify(inicial));
-      return inicial;
-    }
-    return JSON.parse(data);
+  getEmpresas: (): EmpresaTenant[] => {
+    const raw = localStorage.getItem(STORAGE_KEYS.EMPRESAS);
+    return raw ? JSON.parse(raw) : [];
   },
 
-  salvarEmpresa: async (
-    dados: Omit<EmpresaTenant, 'id' | 'criadoEm'>
-  ): Promise<EmpresaTenant[]> => {
-    const empresas = await apiEmpresas.getEmpresas();
+  getEmpresaPorId: (id: string): EmpresaTenant | undefined => {
+    return apiEmpresas.getEmpresas().find((e) => e.id === id);
+  },
+
+  salvarEmpresa: (
+    dados: Omit<EmpresaTenant, 'id' | 'criadoEm' | 'status'>
+  ): EmpresaTenant[] => {
+    const lista = apiEmpresas.getEmpresas();
     const nova: EmpresaTenant = {
       ...dados,
-      id: Math.random().toString(36).substr(2, 9),
-      criadoEm: new Date().toISOString().split('T')[0]
+      id: gerarId('emp'),
+      status: 'ATIVO',
+      criadoEm: hojeISO()
     };
-    const atualizadas = [nova, ...empresas];
-    localStorage.setItem(STORAGE_KEYS.EMPRESAS_TENANTS, JSON.stringify(atualizadas));
+    const atualizadas = [nova, ...lista];
+    localStorage.setItem(STORAGE_KEYS.EMPRESAS, JSON.stringify(atualizadas));
     return atualizadas;
   },
 
-  atualizarStatusEmpresa: async (
-    id: string,
-    status: 'ATIVO' | 'SUSPENSO'
-  ): Promise<EmpresaTenant[]> => {
-    const empresas = await apiEmpresas.getEmpresas();
-    const atualizadas = empresas.map((emp) =>
-      emp.id === id ? { ...emp, status } : emp
+  alternarStatusContrato: (id: string): EmpresaTenant[] => {
+    const atualizadas = apiEmpresas.getEmpresas().map((emp) =>
+      emp.id === id
+        ? {
+            ...emp,
+            status: emp.status === 'ATIVO' ? ('SUSPENSO' as const) : ('ATIVO' as const)
+          }
+        : emp
     );
-    localStorage.setItem(STORAGE_KEYS.EMPRESAS_TENANTS, JSON.stringify(atualizadas));
+    localStorage.setItem(STORAGE_KEYS.EMPRESAS, JSON.stringify(atualizadas));
     return atualizadas;
   }
 };
 
 export const api = {
-  getPrestadores: async (): Promise<PrestadorPJ[]> => {
-    const data = localStorage.getItem(STORAGE_KEYS.PRESTADORES);
-    if (!data) {
-      const inicial: PrestadorPJ[] = [
-        {
-          id: 'p1',
-          empresaId: 'emp1',
-          nome: 'Mariana Costa',
-          razaoSocial: 'Costa Saude S/S',
-          cnpj: '12.345.678/0001-90',
-          email: 'mariana.costa@clinica.com',
-          servico: 'Enfermagem UTI',
-          remuneracao: 'POR_HORA',
-          valorBase: 75.0,
-          contratoStatus: 'VIGENTE',
-          situacao: 'ATIVO',
-          usuario: 'mariana.costa',
-          senha: '123',
-          criadoEm: '2026-10-01'
-        }
-      ];
-      localStorage.setItem(STORAGE_KEYS.PRESTADORES, JSON.stringify(inicial));
-      return inicial;
-    }
-
-    const lista: PrestadorPJ[] = JSON.parse(data);
-    let ajustado = false;
-    const normalizados = lista.map((p) => {
-      if (!p.empresaId && (p.id === 'p1' || p.id === '1')) {
-        ajustado = true;
-        return { ...p, empresaId: 'emp1' };
-      }
-      return p;
-    });
-
-    if (ajustado) {
-      localStorage.setItem(STORAGE_KEYS.PRESTADORES, JSON.stringify(normalizados));
-    }
-
-    return normalizados;
+  getRegrasNegocio: (): RegraNegocioSaaS => {
+    const raw = localStorage.getItem(STORAGE_KEYS.REGRAS);
+    return raw ? { ...REGRAS_PADRAO, ...JSON.parse(raw) } : REGRAS_PADRAO;
   },
 
-  getPrestadoresPorEmpresa: async (empresaId?: string): Promise<PrestadorPJ[]> => {
-    const todos = await api.getPrestadores();
-    return empresaId ? todos.filter((p) => p.empresaId === empresaId) : todos;
+  salvarRegrasNegocio: (regras: RegraNegocioSaaS): RegraNegocioSaaS => {
+    localStorage.setItem(STORAGE_KEYS.REGRAS, JSON.stringify(regras));
+    return regras;
   },
 
-  salvarPrestador: async (
-    prestadorData: Omit<PrestadorPJ, 'id' | 'criadoEm'>
-  ): Promise<PrestadorPJ[]> => {
-    const prestadores = await api.getPrestadores();
+  getPrestadores: (): PrestadorPJ[] => {
+    const raw = localStorage.getItem(STORAGE_KEYS.PRESTADORES);
+    return raw ? JSON.parse(raw) : [];
+  },
+
+  getPrestadoresPorEmpresa: (empresaId: string): PrestadorPJ[] => {
+    return api.getPrestadores().filter((p) => p.empresaId === empresaId);
+  },
+
+  getPrestadorPorId: (id: string): PrestadorPJ | undefined => {
+    return api.getPrestadores().find((p) => p.id === id);
+  },
+
+  salvarPrestador: (
+    dados: Omit<
+      PrestadorPJ,
+      'id' | 'contratoStatus' | 'situacao' | 'dataEntrada' | 'dataSaida' | 'criadoEm'
+    >
+  ): PrestadorPJ[] => {
+    const todos = api.getPrestadores();
+    const dataAtual = hojeISO();
     const novo: PrestadorPJ = {
-      ...prestadorData,
-      id: Math.random().toString(36).substr(2, 9),
-      criadoEm: new Date().toISOString().split('T')[0]
+      ...dados,
+      id: gerarId('pj'),
+      contratoStatus: 'VIGENTE',
+      situacao: 'ATIVO',
+      dataEntrada: dataAtual,
+      criadoEm: dataAtual
     };
-    const atualizados = [novo, ...prestadores];
+    const atualizados = [novo, ...todos];
     localStorage.setItem(STORAGE_KEYS.PRESTADORES, JSON.stringify(atualizados));
-    return atualizados;
+    return atualizados.filter((p) => p.empresaId === dados.empresaId);
   },
 
-  atualizarPrestador: async (
-    prestadorAtualizado: PrestadorPJ
-  ): Promise<PrestadorPJ[]> => {
-    const prestadores = await api.getPrestadores();
-    const atualizados = prestadores.map((p) =>
-      p.id === prestadorAtualizado.id ? prestadorAtualizado : p
-    );
-    localStorage.setItem(STORAGE_KEYS.PRESTADORES, JSON.stringify(atualizados));
-    return atualizados;
-  },
-
-  excluirPrestador: async (id: string): Promise<PrestadorPJ[]> => {
-    const prestadores = await api.getPrestadores();
-    const alvo = prestadores.find((p) => p.id === id);
-    const atualizados = prestadores.filter((p) => p.id !== id);
-    localStorage.setItem(STORAGE_KEYS.PRESTADORES, JSON.stringify(atualizados));
-
-    try {
-      const usuariosSistema: Array<UsuarioSistema & { prestadorId?: string }> =
-        JSON.parse(localStorage.getItem(STORAGE_KEYS.USUARIOS) || '[]');
-      localStorage.setItem(
-        STORAGE_KEYS.USUARIOS,
-        JSON.stringify(
-          usuariosSistema.filter(
-            (u) =>
-              u.prestadorId !== id &&
-              u.id !== id &&
-              (!alvo || u.email.toLowerCase() !== alvo.email.toLowerCase())
-          )
-        )
-      );
-
-      const usuariosMaster = JSON.parse(
-        localStorage.getItem(STORAGE_KEYS.USUARIOS_MASTER) || '[]'
-      );
-      localStorage.setItem(
-        STORAGE_KEYS.USUARIOS_MASTER,
-        JSON.stringify(
-          usuariosMaster.filter(
-            (u: { id?: string; email?: string }) =>
-              u.id !== id &&
-              (!alvo || u.email?.toLowerCase() !== alvo.email.toLowerCase())
-          )
-        )
-      );
-    } catch {
-      // Ignora erro se as chaves ainda não existirem
-    }
-
-    return atualizados;
-  },
-
-  getCompliance: async (): Promise<DocumentoCompliance[]> => {
-    const data = localStorage.getItem(STORAGE_KEYS.COMPLIANCE);
-    if (!data) {
-      const inicial: DocumentoCompliance[] = [
-        {
-          id: '1',
-          prestadorId: 'p1',
-          prestadorNome: 'Mariana Costa',
-          tipoDocumento: 'CND Federal e Trabalhista',
-          dataValidade: '2027-05-15',
-          status: 'VALIDO'
-        }
-      ];
-      localStorage.setItem(STORAGE_KEYS.COMPLIANCE, JSON.stringify(inicial));
-      return inicial;
-    }
-    return JSON.parse(data);
-  },
-
-  salvarCompliance: async (
-    docData: Omit<DocumentoCompliance, 'id'>
-  ): Promise<DocumentoCompliance[]> => {
-    const lista = await api.getCompliance();
-    const novo: DocumentoCompliance = {
-      ...docData,
-      id: Math.random().toString(36).substr(2, 9)
-    };
-    const atualizados = [novo, ...lista];
-    localStorage.setItem(STORAGE_KEYS.COMPLIANCE, JSON.stringify(atualizados));
-    return atualizados;
-  },
-
-  excluirCompliance: async (id: string): Promise<DocumentoCompliance[]> => {
-    const lista = await api.getCompliance();
-    const atualizados = lista.filter((item) => item.id !== id);
-    localStorage.setItem(STORAGE_KEYS.COMPLIANCE, JSON.stringify(atualizados));
-    return atualizados;
-  },
-
-  getContratos: async (): Promise<ContratoPJ[]> => {
-    const data = localStorage.getItem(STORAGE_KEYS.CONTRATOS);
-    if (!data) {
-      const inicial: ContratoPJ[] = [
-        {
-          id: '1',
-          prestadorId: 'p1',
-          prestadorNome: 'Mariana Costa',
-          numeroContrato: 'CT-2026/001',
-          dataInicio: '2026-01-01',
-          dataTermino: '2027-01-01',
-          valorMensal: 8500.0,
-          status: 'VIGENTE'
-        }
-      ];
-      localStorage.setItem(STORAGE_KEYS.CONTRATOS, JSON.stringify(inicial));
-      return inicial;
-    }
-    return JSON.parse(data);
-  },
-
-  getFaturamento: async (): Promise<FaturamentoPJ[]> => {
-    const data = localStorage.getItem(STORAGE_KEYS.FATURAMENTO);
-    if (!data) {
-      const inicial: FaturamentoPJ[] = [
-        {
-          id: 'fat1',
-          prestadorId: 'p1',
-          prestadorNome: 'Mariana Costa',
-          competencia: '10/2026',
-          totalHoras: 8,
-          valorBruto: 600.0,
-          impostosRetidos: 36.0,
-          valorLiquido: 564.0,
-          status: 'HOMOLOGADO',
-          dataEmissao: '2026-10-28'
-        }
-      ];
-      localStorage.setItem(STORAGE_KEYS.FATURAMENTO, JSON.stringify(inicial));
-      return inicial;
-    }
-    return JSON.parse(data);
-  },
-
-  salvarFaturamento: async (
-    fatData: Omit<FaturamentoPJ, 'id'>
-  ): Promise<FaturamentoPJ[]> => {
-    const lista = await api.getFaturamento();
-    const novo: FaturamentoPJ = {
-      ...fatData,
-      id: Math.random().toString(36).substr(2, 9)
-    };
-    const atualizados = [novo, ...lista];
-    localStorage.setItem(STORAGE_KEYS.FATURAMENTO, JSON.stringify(atualizados));
-    return atualizados;
-  },
-
-  atualizarStatusFaturamento: async (
-    id: string,
-    status: StatusFaturamento
-  ): Promise<FaturamentoPJ[]> => {
-    const lista = await api.getFaturamento();
-    const atualizados = lista.map((item: FaturamentoPJ) => {
-      if (item.id === id) {
-        return { ...item, status };
-      }
-      return item;
+  alternarSituacaoPrestador: (id: string, empresaId: string): PrestadorPJ[] => {
+    const todos = api.getPrestadores().map((p) => {
+      if (p.id !== id) return p;
+      const ativando = p.situacao !== 'ATIVO';
+      return {
+        ...p,
+        situacao: ativando ? ('ATIVO' as const) : ('INATIVO' as const),
+        contratoStatus: ativando ? ('VIGENTE' as const) : ('ENCERRADO' as const),
+        dataSaida: ativando ? undefined : hojeISO()
+      };
     });
-    localStorage.setItem(STORAGE_KEYS.FATURAMENTO, JSON.stringify(atualizados));
-    return atualizados;
+    localStorage.setItem(STORAGE_KEYS.PRESTADORES, JSON.stringify(todos));
+    return todos.filter((p) => p.empresaId === empresaId);
   },
 
-  excluirFaturamento: async (id: string): Promise<FaturamentoPJ[]> => {
-    const lista = await api.getFaturamento();
-    const atualizados = lista.filter((item: FaturamentoPJ) => item.id !== id);
-    localStorage.setItem(STORAGE_KEYS.FATURAMENTO, JSON.stringify(atualizados));
-    return atualizados;
+  getTarefas: (): TarefaPJ[] => {
+    const raw = localStorage.getItem(STORAGE_KEYS.TAREFAS);
+    return raw ? JSON.parse(raw) : [];
   },
 
-  getNotasFiscais: async (): Promise<NotaFiscalPJ[]> => {
-    const data = localStorage.getItem(STORAGE_KEYS.NOTAS_FISCAIS);
-    if (!data) {
-      const inicial: NotaFiscalPJ[] = [
-        {
-          id: '1',
-          prestadorId: 'p1',
-          prestadorNome: 'Mariana Costa',
-          competencia: '10/2026',
-          numeroNF: '000123',
-          valor: 600.0,
-          arquivoNome: 'nf-10-2026.pdf',
-          status: 'HOMOLOGADO',
-          dataUpload: '2026-10-11'
-        }
-      ];
-      localStorage.setItem(STORAGE_KEYS.NOTAS_FISCAIS, JSON.stringify(inicial));
-      return inicial;
-    }
-    return JSON.parse(data);
+  getTarefasPorEmpresa: (empresaId: string): TarefaPJ[] => {
+    return api.getTarefas().filter((t) => t.empresaId === empresaId);
   },
 
-  salvarNotaFiscal: async (
-    nfData: Omit<NotaFiscalPJ, 'id' | 'dataUpload' | 'status'>
-  ): Promise<NotaFiscalPJ[]> => {
-    const notas = await api.getNotasFiscais();
-    const nova: NotaFiscalPJ = {
-      ...nfData,
-      id: Math.random().toString(36).substr(2, 9),
-      dataUpload: new Date().toISOString().split('T')[0],
-      status: 'PENDENTE'
-    };
-    const atualizadas = [nova, ...notas];
-    localStorage.setItem(STORAGE_KEYS.NOTAS_FISCAIS, JSON.stringify(atualizadas));
-    return atualizadas;
+  getTarefasPorPrestador: (prestadorId: string): TarefaPJ[] => {
+    return api.getTarefas().filter((t) => t.prestadorId === prestadorId);
   },
 
-  getTarefas: async (): Promise<TarefaPJ[]> => {
-    const data = localStorage.getItem(STORAGE_KEYS.TAREFAS);
-    if (!data) {
-      const inicial: TarefaPJ[] = [
-        {
-          id: '1',
-          prestadorId: 'p1',
-          prestadorNome: 'Mariana Costa',
-          titulo: 'Plantao Enfermagem - UTI',
-          descricao: 'Atendimento de plantao especializado na UTI',
-          pacienteNome: 'Joao Silva',
-          horasTrabalhadas: 8,
-          valorEntrega: 600.0,
-          status: 'APROVADO',
-          prazo: '2026-10-20'
-        }
-      ];
-      localStorage.setItem(STORAGE_KEYS.TAREFAS, JSON.stringify(inicial));
-      return inicial;
-    }
-    return JSON.parse(data);
-  },
+  salvarTarefa: (
+    dados: Omit<TarefaPJ, 'id' | 'valorEntrega' | 'status'>
+  ): TarefaPJ[] => {
+    const regras = api.getRegrasNegocio();
+    const todas = api.getTarefas();
+    const statusInicial: StatusTarefa = regras.exigirAprovacaoEntrega
+      ? 'PENDENTE'
+      : 'APROVADO';
 
-  getTarefasPorEmpresa: async (empresaId?: string): Promise<TarefaPJ[]> => {
-    const todas = await api.getTarefas();
-    if (!empresaId) return todas;
-    const equipe = await api.getPrestadoresPorEmpresa(empresaId);
-    const idsEquipe = new Set(equipe.map((p) => p.id));
-    return todas.filter((t) => idsEquipe.has(t.prestadorId));
-  },
-
-  salvarTarefa: async (tarefaData: Omit<TarefaPJ, 'id'>): Promise<TarefaPJ[]> => {
-    const tarefas = await api.getTarefas();
     const nova: TarefaPJ = {
-      ...tarefaData,
-      id: Math.random().toString(36).substr(2, 9)
+      ...dados,
+      id: gerarId('tar'),
+      valorEntrega: Number((dados.horasTrabalhadas * dados.valorUnitario).toFixed(2)),
+      status: statusInicial
     };
-    const atualizadas = [nova, ...tarefas];
+
+    const atualizadas = [nova, ...todas];
     localStorage.setItem(STORAGE_KEYS.TAREFAS, JSON.stringify(atualizadas));
-    sincronizarTarefaComAtendimento(nova);
     return atualizadas;
   },
 
-  atualizarStatusTarefa: async (
+  atualizarStatusTarefa: (
     id: string,
-    status: StatusTarefa
-  ): Promise<TarefaPJ[]> => {
-    const tarefas = await api.getTarefas();
-    let tarefaAtualizada: TarefaPJ | undefined;
+    status: StatusTarefa,
+    empresaId: string
+  ): TarefaPJ[] => {
+    const todas = api.getTarefas().map((t) => {
+      if (t.id !== id) return t;
+      return {
+        ...t,
+        status,
+        dataPagamento: status === 'PAGO' ? hojeISO() : t.dataPagamento
+      };
+    });
+    localStorage.setItem(STORAGE_KEYS.TAREFAS, JSON.stringify(todas));
+    return todas.filter((t) => t.empresaId === empresaId);
+  },
 
-    const atualizadas = tarefas.map((t: TarefaPJ) => {
-      if (t.id === id) {
-        tarefaAtualizada = { ...t, status };
-        return tarefaAtualizada;
+  getCredenciaisConsolidadas: (): CredencialMasterView[] => {
+    const empresas = apiEmpresas.getEmpresas();
+    const prestadores = api.getPrestadores();
+    const mapaEmpresas = new Map(empresas.map((e) => [e.id, e]));
+
+    const lista: CredencialMasterView[] = [
+      {
+        id: MASTER_PADRAO.id,
+        nome: MASTER_PADRAO.nome,
+        email: MASTER_PADRAO.email,
+        senha: MASTER_PADRAO.senha,
+        perfil: 'MASTER',
+        empresaId: 'global',
+        empresaNome: 'Clingest SaaS',
+        ativo: true
       }
-      return t;
+    ];
+
+    empresas.forEach((emp) => {
+      lista.push({
+        id: `gestor-${emp.id}`,
+        nome: emp.responsavelNome,
+        email: emp.responsavelEmail,
+        senha: emp.senhaGestor,
+        perfil: 'GESTOR',
+        empresaId: emp.id,
+        empresaNome: emp.nomeFantasia,
+        ativo: emp.status === 'ATIVO'
+      });
     });
 
-    localStorage.setItem(STORAGE_KEYS.TAREFAS, JSON.stringify(atualizadas));
-    if (tarefaAtualizada) {
-      sincronizarTarefaComAtendimento(tarefaAtualizada);
-    }
-    return atualizadas;
+    prestadores.forEach((p) => {
+      const emp = mapaEmpresas.get(p.empresaId);
+      lista.push({
+        id: p.id,
+        nome: p.nome,
+        email: p.email,
+        senha: p.senha,
+        perfil: 'PRESTADOR',
+        empresaId: p.empresaId,
+        empresaNome: emp ? emp.nomeFantasia : 'Sem vínculo',
+        ativo: p.situacao === 'ATIVO' && emp?.status === 'ATIVO'
+      });
+    });
+
+    return lista;
   },
 
-  excluirTarefa: async (id: string): Promise<TarefaPJ[]> => {
-    const tarefas = await api.getTarefas();
-    const atualizadas = tarefas.filter((t: TarefaPJ) => t.id !== id);
-    localStorage.setItem(STORAGE_KEYS.TAREFAS, JSON.stringify(atualizadas));
-    return atualizadas;
+  redefinirSenhaUsuario: (email: string, novaSenha: string): void => {
+    const emailNorm = email.trim().toLowerCase();
+
+    const empresas = apiEmpresas.getEmpresas().map((emp) =>
+      emp.responsavelEmail.toLowerCase() === emailNorm
+        ? { ...emp, senhaGestor: novaSenha }
+        : emp
+    );
+    localStorage.setItem(STORAGE_KEYS.EMPRESAS, JSON.stringify(empresas));
+
+    const prestadores = api.getPrestadores().map((p) =>
+      p.email.toLowerCase() === emailNorm ? { ...p, senha: novaSenha } : p
+    );
+    localStorage.setItem(STORAGE_KEYS.PRESTADORES, JSON.stringify(prestadores));
   },
 
-  getAuditLogs: async (): Promise<AuditLog[]> => {
-    const data = localStorage.getItem(STORAGE_KEYS.AUDIT_LOGS);
-    if (!data) {
-      const inicial: AuditLog[] = [
-        {
-          id: '1',
-          dataHora: '2026-10-24 14:30',
-          acao: 'LOGIN_SISTEMA',
-          usuario: 'Henrique_dev',
-          detalhes: 'Acesso ao painel master realizado com sucesso.'
-        }
-      ];
-      localStorage.setItem(STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(inicial));
-      return inicial;
-    }
-    return JSON.parse(data);
+  getMovimentacoesAcesso: (): RegistroMovimentacaoAcesso[] => {
+    const raw = localStorage.getItem(STORAGE_KEYS.ACESSOS);
+    return raw ? JSON.parse(raw) : [];
   },
 
-  registrarAuditLog: async (
-    acao: string,
-    usuario: string,
-    detalhes: string
-  ): Promise<void> => {
-    const logs = await api.getAuditLogs();
-    const novoLog: AuditLog = {
-      id: Math.random().toString(36).substr(2, 9),
-      dataHora: new Date().toISOString().replace('T', ' ').substring(0, 16),
-      acao,
-      usuario,
-      detalhes
+  registrarMovimentacaoAcesso: (
+    dados: Omit<RegistroMovimentacaoAcesso, 'id' | 'dataHora'>
+  ): void => {
+    const lista = api.getMovimentacoesAcesso();
+    const novo: RegistroMovimentacaoAcesso = {
+      ...dados,
+      id: gerarId('acc'),
+      dataHora: agoraFormatado()
     };
     localStorage.setItem(
-      STORAGE_KEYS.AUDIT_LOGS,
-      JSON.stringify([novoLog, ...logs])
+      STORAGE_KEYS.ACESSOS,
+      JSON.stringify([novo, ...lista].slice(0, 100))
     );
-  },
+  }
+};
 
-  getChamados: async (): Promise<ChamadoPJ[]> => {
-    const data = localStorage.getItem(STORAGE_KEYS.CHAMADOS);
-    if (!data) {
-      const inicial: ChamadoPJ[] = [
-        {
-          id: '1',
-          prestadorId: 'p1',
-          prestadorNome: 'Mariana Costa',
-          assunto: 'Duvida sobre NFS-e',
-          mensagem: 'Como faco o upload da nota fiscal de prestacao de servicos?',
-          status: 'ABERTO',
-          dataCriacao: '2026-10-24'
-        }
-      ];
-      localStorage.setItem(STORAGE_KEYS.CHAMADOS, JSON.stringify(inicial));
-      return inicial;
+export const apiAuth = {
+  login: (
+    email: string,
+    senha: string
+  ): { ok: boolean; erro?: string; usuario?: UsuarioSistema } => {
+    const emailNorm = email.trim().toLowerCase();
+    const senhaNorm = senha.trim();
+
+    if (!emailNorm || !senhaNorm) {
+      return { ok: false, erro: 'Preencha e-mail e senha para acessar.' };
     }
-    return JSON.parse(data);
-  },
 
-  responderChamado: async (
-    chamadoId: string,
-    resposta: string
-  ): Promise<ChamadoPJ[]> => {
-    const chamados = await api.getChamados();
-    const atualizados = chamados.map((ch: ChamadoPJ) => {
-      if (ch.id === chamadoId) {
+    if (
+      emailNorm === MASTER_PADRAO.email &&
+      senhaNorm === MASTER_PADRAO.senha
+    ) {
+      const usuario: UsuarioSistema = {
+        id: MASTER_PADRAO.id,
+        nome: MASTER_PADRAO.nome,
+        email: MASTER_PADRAO.email,
+        senha: MASTER_PADRAO.senha,
+        perfil: 'MASTER',
+        empresaNome: 'Clingest SaaS'
+      };
+      localStorage.setItem(STORAGE_KEYS.SESSAO, JSON.stringify(usuario));
+      api.registrarMovimentacaoAcesso({
+        usuarioNome: usuario.nome,
+        usuarioEmail: usuario.email,
+        perfil: 'MASTER',
+        empresaNome: 'Clingest SaaS',
+        tipo: 'ENTRADA'
+      });
+      return { ok: true, usuario };
+    }
+
+    const empresa = apiEmpresas
+      .getEmpresas()
+      .find(
+        (e) =>
+          e.responsavelEmail.toLowerCase() === emailNorm &&
+          e.senhaGestor === senhaNorm
+      );
+
+    if (empresa) {
+      if (empresa.status !== 'ATIVO') {
         return {
-          ...ch,
-          status: 'RESPONDIDO' as const,
-          respostaAdmin: resposta
+          ok: false,
+          erro: 'O contrato desta clínica está desativado pelo Master.'
         };
       }
-      return ch;
-    });
-    localStorage.setItem(STORAGE_KEYS.CHAMADOS, JSON.stringify(atualizados));
-    return atualizados;
+
+      const usuario: UsuarioSistema = {
+        id: `gestor-${empresa.id}`,
+        nome: empresa.responsavelNome,
+        email: empresa.responsavelEmail,
+        senha: empresa.senhaGestor,
+        perfil: 'GESTOR',
+        empresaId: empresa.id,
+        empresaNome: empresa.nomeFantasia
+      };
+      localStorage.setItem(STORAGE_KEYS.SESSAO, JSON.stringify(usuario));
+      api.registrarMovimentacaoAcesso({
+        usuarioNome: usuario.nome,
+        usuarioEmail: usuario.email,
+        perfil: 'GESTOR',
+        empresaNome: empresa.nomeFantasia,
+        tipo: 'ENTRADA'
+      });
+      return { ok: true, usuario };
+    }
+
+    const prestador = api
+      .getPrestadores()
+      .find(
+        (p) => p.email.toLowerCase() === emailNorm && p.senha === senhaNorm
+      );
+
+    if (prestador) {
+      const empresaVinculada = apiEmpresas.getEmpresaPorId(prestador.empresaId);
+
+      if (!empresaVinculada || empresaVinculada.status !== 'ATIVO') {
+        return {
+          ok: false,
+          erro: 'A clínica contratante está com o contrato inativo.'
+        };
+      }
+
+      if (prestador.situacao !== 'ATIVO') {
+        return {
+          ok: false,
+          erro: 'Seu acesso foi desativado pelo RH da clínica.'
+        };
+      }
+
+      const usuario: UsuarioSistema = {
+        id: prestador.id,
+        nome: prestador.nome,
+        email: prestador.email,
+        senha: prestador.senha,
+        perfil: 'PRESTADOR',
+        empresaId: empresaVinculada.id,
+        empresaNome: empresaVinculada.nomeFantasia
+      };
+      localStorage.setItem(STORAGE_KEYS.SESSAO, JSON.stringify(usuario));
+      api.registrarMovimentacaoAcesso({
+        usuarioNome: usuario.nome,
+        usuarioEmail: usuario.email,
+        perfil: 'PRESTADOR',
+        empresaNome: empresaVinculada.nomeFantasia,
+        tipo: 'ENTRADA'
+      });
+      return { ok: true, usuario };
+    }
+
+    return { ok: false, erro: 'Credenciais inválidas.' };
+  },
+
+  getSessao: (): UsuarioSistema | null => {
+    const raw = localStorage.getItem(STORAGE_KEYS.SESSAO);
+    return raw ? JSON.parse(raw) : null;
+  },
+
+  logout: (): void => {
+    const atual = apiAuth.getSessao();
+    if (atual) {
+      api.registrarMovimentacaoAcesso({
+        usuarioNome: atual.nome,
+        usuarioEmail: atual.email,
+        perfil: atual.perfil,
+        empresaNome: atual.empresaNome || 'Clingest SaaS',
+        tipo: 'SAIDA'
+      });
+    }
+    localStorage.removeItem(STORAGE_KEYS.SESSAO);
   }
 };

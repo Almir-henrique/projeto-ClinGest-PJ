@@ -1,207 +1,132 @@
-import React, { useState } from 'react';
-import { Shield, User, Key, Building2, Eye, EyeOff } from 'lucide-react';
-import { dbService } from '../services/db';
-import { masterService } from '../services/masterService';
-import { useToast } from '../context/ToastContext';
+import { useState, type FC, type FormEvent } from 'react';
+import { Lock, Mail, ArrowRight, ShieldCheck, Building2, Briefcase } from 'lucide-react';
 import type { UsuarioSistema } from '../types/usuario';
+import { apiAuth } from '../services/api';
 
 interface LoginProps {
-  onLoginSuccess: (usuario: UsuarioSistema) => void;
+  onLogin: (usuario: UsuarioSistema) => void;
 }
 
-const SENHAS_PADRAO_SISTEMA: Record<string, string> = {
-  Henrique_dev: '1234',
-  gestor: '123',
-  'mariana.costa': '123'
-};
-
-export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
-  const [usuario, setUsuario] = useState('');
+export const Login: FC<LoginProps> = ({ onLogin }) => {
+  const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
-  const [mostrarSenha, setMostrarSenha] = useState(false);
-  const [carregando, setCarregando] = useState(false);
-  const { showToast } = useToast();
+  const [erro, setErro] = useState('');
 
-  const handleLoginSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
+    setErro('');
 
-    if (carregando) return;
-
-    const identificador = usuario.trim();
-    if (!identificador || !senha) {
-      showToast('Preencha o usuario e a senha de acesso.', 'error');
+    const resultado = apiAuth.login(email, senha);
+    if (!resultado.ok || !resultado.usuario) {
+      setErro(resultado.erro || 'Não foi possível entrar.');
       return;
     }
 
-    setCarregando(true);
+    onLogin(resultado.usuario);
+  };
 
-    try {
-      // 1. Verifica acesso MASTER
-      const usuariosSistema = dbService.getUsuarios();
-      const contaMaster = usuariosSistema.find(
-        (item) =>
-          item.perfil === 'MASTER' &&
-          (item.usuario.toLowerCase() === identificador.toLowerCase() ||
-            item.email.toLowerCase() === identificador.toLowerCase())
-      );
-
-      if (contaMaster) {
-        if (!contaMaster.ativo) {
-          showToast('Conta Master desativada.', 'error');
-          return;
-        }
-        const senhaEsperada =
-          contaMaster.senha || SENHAS_PADRAO_SISTEMA[contaMaster.usuario];
-        if (senha !== senhaEsperada) {
-          showToast('Usuario ou senha invalidos.', 'error');
-          return;
-        }
-        showToast('Acesso Master realizado com sucesso.', 'success');
-        onLoginSuccess(contaMaster);
-        return;
-      }
-
-      // 2. Valida empresas, gestores e prestadores cadastrados na Area Master
-      const validacaoMaster = masterService.validarAutenticacaoUsuario(
-        identificador,
-        senha
-      );
-
-      if (validacaoMaster.permitido && validacaoMaster.usuario) {
-        const conta = validacaoMaster.usuario;
-        masterService.registrarLoginUsuario(conta.id);
-
-        const usuarioLogado: UsuarioSistema = {
-          id: conta.id,
-          empresaId: conta.empresaId,
-          empresaNome: conta.empresaNome,
-          nome: conta.nome,
-          email: conta.email,
-          usuario: conta.usuario || conta.email.split('@')[0],
-          senha: conta.senha,
-          perfil: conta.perfil === 'PJ' ? 'PRESTADOR' : conta.perfil,
-          prestadorId: conta.perfil === 'PJ' ? conta.id : undefined,
-          ativo: conta.status === 'ATIVO',
-          exigirTrocaSenha: conta.exigirTrocaSenha,
-          criadoEm: conta.dataCriacao
-        };
-
-        showToast(`Bem-vindo(a), ${usuarioLogado.nome}!`, 'success');
-        onLoginSuccess(usuarioLogado);
-        return;
-      }
-
-      // Se a empresa estiver suspensa ou conta bloqueada, exibe o motivo exato
-      if (validacaoMaster.usuario && validacaoMaster.motivo) {
-        showToast(validacaoMaster.motivo, 'error');
-        return;
-      }
-
-      // 3. Fallback para contas locais legadas do dbService
-      const usuarioLegado = usuariosSistema.find(
-        (item) =>
-          item.usuario.toLowerCase() === identificador.toLowerCase() ||
-          item.email.toLowerCase() === identificador.toLowerCase()
-      );
-
-      if (!usuarioLegado) {
-        showToast('Usuario ou senha invalidos.', 'error');
-        return;
-      }
-
-      if (!usuarioLegado.ativo) {
-        showToast('Usuario inativo. Contate o administrador.', 'error');
-        return;
-      }
-
-      const senhaLegadaValida =
-        (usuarioLegado.senha || SENHAS_PADRAO_SISTEMA[usuarioLegado.usuario]) === senha;
-
-      if (!senhaLegadaValida) {
-        showToast('Usuario ou senha invalidos.', 'error');
-        return;
-      }
-
-      showToast('Login realizado com sucesso.', 'success');
-      onLoginSuccess(usuarioLegado);
-    } catch {
-      showToast('Nao foi possivel realizar a autenticacao.', 'error');
-    } finally {
-      setCarregando(false);
-    }
+  const preencherDemo = (emailDemo: string, senhaDemo: string) => {
+    setEmail(emailDemo);
+    setSenha(senhaDemo);
+    setErro('');
   };
 
   return (
-    <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4 font-sans">
-      <div className="max-w-md w-full bg-white rounded-2xl shadow-xl overflow-hidden border border-slate-200">
-        <div className="bg-brand-navy p-8 text-center text-white">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-teal-500/10 text-brand-teal mb-4 border border-teal-500/20">
-            <Building2 size={32} />
-          </div>
-          <h1 className="text-2xl font-bold">ClinGest PJ</h1>
-          <p className="text-slate-300 text-sm mt-1">
-            Plataforma de Gestao e Compliance em Saude
+    <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
+      <div className="max-w-md w-full bg-white rounded-2xl border border-slate-200 shadow-sm p-8 space-y-6">
+        <div className="space-y-1.5">
+          <span className="inline-block text-xs font-bold uppercase tracking-widest text-indigo-600">
+            Clingest PJ
+          </span>
+          <h1 className="text-2xl font-bold text-slate-900">Acesso ao Sistema</h1>
+          <p className="text-sm text-slate-500">
+            Entre com seu e-mail e senha para acessar seu painel.
           </p>
         </div>
 
-        <form onSubmit={handleLoginSubmit} className="p-8 space-y-5">
+        <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
-              Usuario ou E-mail
+            <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+              E-mail
             </label>
             <div className="relative">
-              <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400">
-                <User size={18} />
-              </span>
+              <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
               <input
-                type="text"
-                value={usuario}
-                onChange={(e) => setUsuario(e.target.value)}
-                placeholder="Digite seu usuario ou e-mail"
-                className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:border-brand-teal"
-                autoComplete="username"
+                type="email"
                 required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="seuemail@empresa.com"
+                className="w-full pl-10 pr-3.5 py-2.5 text-sm border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
-              Senha de Acesso
+            <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+              Senha
             </label>
             <div className="relative">
-              <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400">
-                <Key size={18} />
-              </span>
+              <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
               <input
-                type={mostrarSenha ? 'text' : 'password'}
+                type="password"
+                required
                 value={senha}
                 onChange={(e) => setSenha(e.target.value)}
-                placeholder="Digite sua senha"
-                className="w-full pl-10 pr-12 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:border-brand-teal"
-                autoComplete="current-password"
-                required
+                placeholder="••••••••"
+                className="w-full pl-10 pr-3.5 py-2.5 text-sm border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
-              <button
-                type="button"
-                onClick={() => setMostrarSenha(!mostrarSenha)}
-                className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 focus:outline-none"
-                title={mostrarSenha ? 'Ocultar senha' : 'Mostrar senha'}
-              >
-                {mostrarSenha ? <EyeOff size={18} /> : <Eye size={18} />}
-              </button>
             </div>
           </div>
+
+          {erro && (
+            <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-xs font-medium text-red-700">
+              {erro}
+            </div>
+          )}
 
           <button
             type="submit"
-            disabled={carregando}
-            className="w-full py-3 bg-brand-teal hover:bg-teal-800 disabled:opacity-60 disabled:cursor-not-allowed text-white rounded-xl text-sm font-semibold transition-colors shadow-sm flex items-center justify-center gap-2"
+            className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-2.5 px-4 rounded-xl transition cursor-pointer"
           >
-            <Shield size={18} />
-            {carregando ? 'Autenticando...' : 'Acessar Sistema'}
+            Entrar
+            <ArrowRight className="w-4 h-4" />
           </button>
         </form>
+
+        <div className="pt-4 border-t border-slate-100 space-y-2">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+            Acessos de Demonstração
+          </p>
+          <div className="grid grid-cols-3 gap-2">
+            <button
+              type="button"
+              onClick={() => preencherDemo('henrique@clingest.com', '123456')}
+              className="flex flex-col items-center gap-1 p-2.5 rounded-xl border border-slate-200 hover:border-slate-400 hover:bg-slate-50 text-xs font-medium text-slate-700 transition cursor-pointer"
+            >
+              <ShieldCheck className="w-4 h-4 text-slate-800" />
+              Master
+            </button>
+
+            <button
+              type="button"
+              onClick={() => preencherDemo('gestor@saolucas.com.br', '123456')}
+              className="flex flex-col items-center gap-1 p-2.5 rounded-xl border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/50 text-xs font-medium text-slate-700 transition cursor-pointer"
+            >
+              <Building2 className="w-4 h-4 text-indigo-600" />
+              Clínica
+            </button>
+
+            <button
+              type="button"
+              onClick={() => preencherDemo('mariana.costa@clinica.com', '123')}
+              className="flex flex-col items-center gap-1 p-2.5 rounded-xl border border-slate-200 hover:border-emerald-300 hover:bg-emerald-50/50 text-xs font-medium text-slate-700 transition cursor-pointer"
+            >
+              <Briefcase className="w-4 h-4 text-emerald-600" />
+              PJ
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

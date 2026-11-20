@@ -1,831 +1,791 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import { useMemo, useState, type FC, type FormEvent } from 'react';
 import {
+  UserPlus,
   Users,
-  Plus,
-  Shield,
-  AlertTriangle,
-  Eye,
-  EyeOff,
-  Building2,
+  CheckCircle2,
+  Clock,
+  DollarSign,
   UserCheck,
-  UserX
+  UserX,
+  PlusCircle,
+  Building2,
+  LogOut
 } from 'lucide-react';
-import { api } from '../services/api';
-import { masterService } from '../services/masterService';
-import { useToast } from '../context/ToastContext';
-import type { PrestadorPJ, SituacaoPrestador } from '../types/prestador';
+import type { ModalidadeContrato } from '../types/contrato';
+import type { PrestadorPJ } from '../types/prestador';
 import type { TarefaPJ } from '../types/tarefa';
 import type { UsuarioSistema } from '../types/usuario';
-import type { EmpresaComMetricas } from '../types/master';
+import { api, apiEmpresas } from '../services/api';
 
 interface PainelGestorProps {
-  usuarioLogado?: UsuarioSistema;
+  usuario: UsuarioSistema;
+  onLogout: () => void;
 }
 
-const STORAGE_PRESTADORES = '@clingest_prestadores';
-const STORAGE_USUARIOS_SISTEMA = '@clingest_usuarios';
-const STORAGE_USUARIOS_MASTER = 'clingest_usuarios_admin';
+export const PainelGestor: FC<PainelGestorProps> = ({ usuario, onLogout }) => {
+  const empresaId = usuario.empresaId || '';
+  const empresa = useMemo(
+    () => apiEmpresas.getEmpresaPorId(empresaId),
+    [empresaId]
+  );
+  const regras = useMemo(() => api.getRegrasNegocio(), []);
 
-export const PainelGestor: React.FC<PainelGestorProps> = ({ usuarioLogado }) => {
-  const [prestadores, setPrestadores] = useState<PrestadorPJ[]>([]);
-  const [tarefas, setTarefas] = useState<TarefaPJ[]>([]);
-  const [empresaInfo, setEmpresaInfo] = useState<EmpresaComMetricas | null>(null);
-  const [modalAberto, setModalAberto] = useState(false);
-  const [mostrarSenha, setMostrarSenha] = useState(false);
-
-  // Estados do formulário de cadastro de funcionário/prestador pela clínica
-  const [nome, setNome] = useState('');
-  const [razaoSocial, setRazaoSocial] = useState('');
-  const [cnpj, setCnpj] = useState('');
-  const [email, setEmail] = useState('');
-  const [servico, setServico] = useState('');
-  const [valorBase, setValorBase] = useState(75.0);
-  const [usuario, setUsuario] = useState('');
-  const [senha, setSenha] = useState('');
-
-  const { showToast } = useToast();
-  const empresaId = usuarioLogado?.empresaId;
-
-  const sincronizarPrestadoresDaEmpresa = (
-    todosPrestadores: PrestadorPJ[],
-    idEmpresa?: string
-  ): PrestadorPJ[] => {
-    if (!idEmpresa) {
-      return todosPrestadores;
-    }
-
-    const contasMasterEmpresa = masterService
-      .getUsuariosPorEmpresa(idEmpresa)
-      .filter((u) => u.perfil === 'PJ');
-
-    const listaAtualizada = [...todosPrestadores];
-    let houveAlteracao = false;
-
-    contasMasterEmpresa.forEach((conta) => {
-      const jaExiste = listaAtualizada.some(
-        (p) =>
-          p.id === conta.id ||
-          p.email.toLowerCase() === conta.email.toLowerCase()
-      );
-
-      if (!jaExiste) {
-        listaAtualizada.push({
-          id: conta.id,
-          empresaId: idEmpresa,
-          nome: conta.nome,
-          razaoSocial: `${conta.nome} Servicos Medicos LTDA`,
-          cnpj: '00.000.000/0001-00',
-          email: conta.email,
-          servico: 'Atendimento Clinico PJ',
-          remuneracao: 'POR_HORA',
-          valorBase: 80.0,
-          contratoStatus: 'VIGENTE',
-          situacao: conta.status === 'ATIVO' ? 'ATIVO' : 'INATIVO',
-          usuario: conta.usuario || conta.email.split('@')[0],
-          senha: conta.senha || '123',
-          criadoEm: conta.dataCriacao
-        });
-        houveAlteracao = true;
-      }
-    });
-
-    if (houveAlteracao) {
-      localStorage.setItem(STORAGE_PRESTADORES, JSON.stringify(listaAtualizada));
-    }
-
-    return listaAtualizada.filter((p) => p.empresaId === idEmpresa);
-  };
-
-  const carregarDados = async () => {
-    const listaPrestadores = await api.getPrestadores();
-    const prestadoresFiltrados = sincronizarPrestadoresDaEmpresa(
-      listaPrestadores,
-      empresaId
-    );
-    setPrestadores(prestadoresFiltrados);
-
-    const idsEquipe = new Set(prestadoresFiltrados.map((p) => p.id));
-    const listaTarefas = await api.getTarefas();
-    const tarefasFiltradas = empresaId
-      ? listaTarefas.filter((t) => idsEquipe.has(t.prestadorId))
-      : listaTarefas;
-    setTarefas(tarefasFiltradas);
-
-    if (empresaId) {
-      const dadosEmpresa = masterService.getEmpresaComMetricasById(empresaId);
-      setEmpresaInfo(dadosEmpresa);
-    } else {
-      setEmpresaInfo(null);
-    }
-  };
-
-  useEffect(() => {
-    carregarDados();
-  }, [empresaId]);
-
-  const limitePlanoEmpresa = empresaInfo?.licencasContratadas ?? 10;
-  const politicaExcedentes = empresaInfo?.politicaExcedentes ?? 'BLOQUEAR';
-  const valorPorExcedente = empresaInfo?.valorPorExcedente ?? 0;
-
-  const totalAtivos = useMemo(
-    () => prestadores.filter((p) => p.situacao === 'ATIVO').length,
-    [prestadores]
+  const [prestadores, setPrestadores] = useState<PrestadorPJ[]>(() =>
+    api.getPrestadoresPorEmpresa(empresaId)
+  );
+  const [tarefas, setTarefas] = useState<TarefaPJ[]>(() =>
+    api.getTarefasPorEmpresa(empresaId)
   );
 
-  const atingiuLimiteBase = totalAtivos >= limitePlanoEmpresa;
-  const bloqueadoPorLimite =
-    atingiuLimiteBase && politicaExcedentes === 'BLOQUEAR';
-  const emCobrancaExcedente =
-    atingiuLimiteBase && politicaExcedentes === 'COBRAR';
+  const [modalFuncionarioAberto, setModalFuncionarioAberto] = useState(false);
+  const [nome, setNome] = useState('');
+  const [razaoSocial, setRazaoSocial] = useState('');
+  const [servico, setServico] = useState('');
+  const [cnpj, setCnpj] = useState('');
+  const [email, setEmail] = useState('');
+  const [senha, setSenha] = useState('');
+  const [remuneracao, setRemuneracao] = useState<ModalidadeContrato>('PLANTAO');
+  const [valorBase, setValorBase] = useState(500);
+  const [erroCadastro, setErroCadastro] = useState('');
 
-  const registrarCredenciaisNoSistema = (novoPrestador: PrestadorPJ) => {
-    const nomeEmpresa =
-      empresaInfo?.nomeFantasia ||
-      usuarioLogado?.empresaNome ||
-      'Clinica Contratante';
+  const [modalEntregaAberto, setModalEntregaAberto] = useState(false);
+  const [prestadorSelecionadoId, setPrestadorSelecionadoId] = useState('');
+  const [tituloEntrega, setTituloEntrega] = useState('');
+  const [prazoEntrega, setPrazoEntrega] = useState(
+    new Date().toISOString().split('T')[0]
+  );
+  const [quantidadeEntrega, setQuantidadeEntrega] = useState(1);
 
-    // 1. Garante persistência dos campos multi-tenant no storage de prestadores
-    const prestadoresAtuais: PrestadorPJ[] = JSON.parse(
-      localStorage.getItem(STORAGE_PRESTADORES) || '[]'
-    );
-    const prestadoresAtualizados = prestadoresAtuais.map((p) =>
-      p.id === novoPrestador.id ||
-      p.email.toLowerCase() === novoPrestador.email.toLowerCase()
-        ? {
-            ...p,
-            empresaId: novoPrestador.empresaId,
-            usuario: novoPrestador.usuario,
-            senha: novoPrestador.senha
-          }
-        : p
-    );
-    localStorage.setItem(
-      STORAGE_PRESTADORES,
-      JSON.stringify(prestadoresAtualizados)
-    );
+  const metricas = useMemo(() => {
+    const ativos = prestadores.filter((p) => p.situacao === 'ATIVO').length;
+    const desligados = prestadores.filter((p) => p.situacao !== 'ATIVO').length;
+    const aPagar = tarefas
+      .filter((t) => t.status !== 'PAGO')
+      .reduce((acc, t) => acc + t.valorEntrega, 0);
+    const pago = tarefas
+      .filter((t) => t.status === 'PAGO')
+      .reduce((acc, t) => acc + t.valorEntrega, 0);
 
-    // 2. Sincroniza no banco de usuários do sistema (@clingest_usuarios)
-    const usuariosSistema: UsuarioSistema[] = JSON.parse(
-      localStorage.getItem(STORAGE_USUARIOS_SISTEMA) || '[]'
-    );
-    const jaExisteUsuario = usuariosSistema.some(
-      (u) => u.email.toLowerCase() === novoPrestador.email.toLowerCase()
-    );
+    return { ativos, desligados, aPagar, pago };
+  }, [prestadores, tarefas]);
 
-    if (!jaExisteUsuario) {
-      const novoUsuarioSistema: UsuarioSistema = {
-        id: novoPrestador.id,
-        empresaId: novoPrestador.empresaId,
-        empresaNome: nomeEmpresa,
-        nome: novoPrestador.nome,
-        email: novoPrestador.email,
-        usuario: novoPrestador.usuario || novoPrestador.email.split('@')[0],
-        senha: novoPrestador.senha || '123',
-        perfil: 'PRESTADOR',
-        prestadorId: novoPrestador.id,
-        ativo: novoPrestador.situacao === 'ATIVO',
-        criadoEm: novoPrestador.criadoEm
-      };
-      localStorage.setItem(
-        STORAGE_USUARIOS_SISTEMA,
-        JSON.stringify([novoUsuarioSistema, ...usuariosSistema])
-      );
+  const limiteLicencas = empresa?.limitePrestadores ?? 0;
+  const licencasEsgotadas =
+    regras.bloquearExcessoLicencas && metricas.ativos >= limiteLicencas;
+  const licencasExcedentes = Math.max(0, metricas.ativos - limiteLicencas);
+
+  const modalidadesPermitidas = useMemo(() => {
+    const lista: { valor: ModalidadeContrato; label: string }[] = [];
+    if (regras.permitirContratoPlantao) {
+      lista.push({ valor: 'PLANTAO', label: 'Por Plantão' });
     }
-
-    // 3. Sincroniza na base consolidada da Área Master (clingest_usuarios_admin)
-    if (novoPrestador.empresaId) {
-      const usuariosMaster = JSON.parse(
-        localStorage.getItem(STORAGE_USUARIOS_MASTER) || '[]'
-      );
-      const jaExisteMaster = usuariosMaster.some(
-        (u: { email?: string }) =>
-          u.email?.toLowerCase() === novoPrestador.email.toLowerCase()
-      );
-      if (!jaExisteMaster) {
-        usuariosMaster.unshift({
-          id: novoPrestador.id,
-          empresaId: novoPrestador.empresaId,
-          empresaNome: nomeEmpresa,
-          nome: novoPrestador.nome,
-          usuario: novoPrestador.usuario || novoPrestador.email.split('@')[0],
-          email: novoPrestador.email.toLowerCase(),
-          senha: novoPrestador.senha || '123',
-          perfil: 'PJ',
-          dataCriacao: novoPrestador.criadoEm,
-          ultimoLogin: 'Nunca acessou',
-          status: novoPrestador.situacao === 'ATIVO' ? 'ATIVO' : 'BLOQUEADO'
-        });
-        localStorage.setItem(
-          STORAGE_USUARIOS_MASTER,
-          JSON.stringify(usuariosMaster)
-        );
-      }
+    if (regras.permitirContratoHora) {
+      lista.push({ valor: 'POR_HORA', label: 'Por Hora' });
     }
-  };
-
-  const handleAbrirModalNovo = () => {
-    if (bloqueadoPorLimite) {
-      showToast(
-        `Limite de ${limitePlanoEmpresa} licencas PJ atingido no plano ${
-          empresaInfo?.plano || 'atual'
-        }. Solicite upgrade ao suporte Master.`,
-        'error'
-      );
-      return;
+    if (regras.permitirContratoMensal) {
+      lista.push({ valor: 'MENSAL', label: 'Fixo Mensal' });
     }
-    setModalAberto(true);
-  };
+    return lista.length > 0
+      ? lista
+      : [{ valor: 'PLANTAO' as ModalidadeContrato, label: 'Por Plantão' }];
+  }, [regras]);
 
-  const handleCadastrarFuncionario = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (empresaId) {
-      const validacao = masterService.podeAdicionarProfissionalPJ(empresaId);
-      if (!validacao.permitido) {
-        showToast(
-          validacao.motivo || 'Limite de licencas PJ atingido para esta empresa.',
-          'error'
-        );
-        return;
-      }
-    } else if (bloqueadoPorLimite) {
-      showToast(
-        'Limite de funcionarios atingido para o seu plano atual!',
-        'error'
-      );
-      return;
-    }
-
-    const emailNormalizado = email.trim().toLowerCase();
-    const usuarioNormalizado = usuario.trim();
-
-    if (
-      !nome.trim() ||
-      !cnpj.trim() ||
-      !emailNormalizado ||
-      !usuarioNormalizado ||
-      !senha.trim()
-    ) {
-      showToast('Preencha todos os campos obrigatorios.', 'error');
-      return;
-    }
-
-    const emailEmUso = prestadores.some(
-      (p) => p.email.toLowerCase() === emailNormalizado
-    );
-    const usuarioEmUso = prestadores.some(
-      (p) => (p.usuario || '').toLowerCase() === usuarioNormalizado.toLowerCase()
-    );
-
-    if (emailEmUso || usuarioEmUso) {
-      showToast('Ja existe um profissional com este usuario ou e-mail.', 'error');
-      return;
-    }
-
-    const listaAtualizada = await api.salvarPrestador({
-      empresaId,
-      nome: nome.trim(),
-      razaoSocial: razaoSocial.trim(),
-      cnpj: cnpj.trim(),
-      email: emailNormalizado,
-      servico: servico.trim(),
-      remuneracao: 'POR_HORA',
-      valorBase: Number(valorBase),
-      contratoStatus: 'VIGENTE',
-      situacao: 'ATIVO',
-      usuario: usuarioNormalizado,
-      senha: senha.trim()
-    });
-
-    const salvo = listaAtualizada[0];
-    if (salvo) {
-      registrarCredenciaisNoSistema({
-        ...salvo,
-        empresaId,
-        usuario: usuarioNormalizado,
-        senha: senha.trim()
-      });
-    }
-
-    if (emCobrancaExcedente && valorPorExcedente > 0) {
-      showToast(
-        `Profissional cadastrado como licenca excedente (+R$ ${valorPorExcedente.toFixed(
-          2
-        )}/mes).`,
-        'success'
-      );
-    } else {
-      showToast('Profissional PJ cadastrado e acesso liberado!', 'success');
-    }
-
+  const abrirModalFuncionario = () => {
+    setErroCadastro('');
     setNome('');
     setRazaoSocial('');
+    setServico('');
     setCnpj('');
     setEmail('');
-    setServico('');
-    setValorBase(75.0);
-    setUsuario('');
     setSenha('');
-    setMostrarSenha(false);
-    setModalAberto(false);
-    carregarDados();
+    setRemuneracao(modalidadesPermitidas[0].valor);
+    setValorBase(500);
+    setModalFuncionarioAberto(true);
   };
 
-  const handleAlternarSituacaoPrestador = (prestador: PrestadorPJ) => {
-    const novaSituacao: SituacaoPrestador =
-      prestador.situacao === 'ATIVO' ? 'INATIVO' : 'ATIVO';
+  const handleCadastrarFuncionario = (e: FormEvent) => {
+    e.preventDefault();
+    setErroCadastro('');
 
-    if (novaSituacao === 'ATIVO' && empresaId) {
-      const validacao = masterService.podeReativarProfissionalPJ(empresaId);
-      if (!validacao.permitido) {
-        showToast(
-          validacao.motivo ||
-            'Limite de licencas atingido para reativar este profissional.',
-          'error'
-        );
-        return;
-      }
+    if (licencasEsgotadas) {
+      setErroCadastro(
+        `Limite de ${limiteLicencas} licença(s) atingido para esta unidade.`
+      );
+      return;
     }
 
-    const prestadoresAtuais: PrestadorPJ[] = JSON.parse(
-      localStorage.getItem(STORAGE_PRESTADORES) || '[]'
-    );
-    const atualizados = prestadoresAtuais.map((p) =>
-      p.id === prestador.id ? { ...p, situacao: novaSituacao } : p
-    );
-    localStorage.setItem(STORAGE_PRESTADORES, JSON.stringify(atualizados));
+    const emailNorm = email.trim().toLowerCase();
+    const duplicado = api
+      .getCredenciaisConsolidadas()
+      .some((c) => c.email.toLowerCase() === emailNorm);
 
-    // Sincroniza status na base de usuários
-    const usuariosSistema: UsuarioSistema[] = JSON.parse(
-      localStorage.getItem(STORAGE_USUARIOS_SISTEMA) || '[]'
-    );
-    localStorage.setItem(
-      STORAGE_USUARIOS_SISTEMA,
-      JSON.stringify(
-        usuariosSistema.map((u) =>
-          u.id === prestador.id ||
-          u.email.toLowerCase() === prestador.email.toLowerCase()
-            ? { ...u, ativo: novaSituacao === 'ATIVO' }
-            : u
-        )
-      )
-    );
+    if (duplicado) {
+      setErroCadastro('Este e-mail já está em uso no sistema.');
+      return;
+    }
 
-    const usuariosMaster = JSON.parse(
-      localStorage.getItem(STORAGE_USUARIOS_MASTER) || '[]'
-    );
-    localStorage.setItem(
-      STORAGE_USUARIOS_MASTER,
-      JSON.stringify(
-        usuariosMaster.map(
-          (u: { id?: string; email?: string; status?: string }) =>
-            u.id === prestador.id ||
-            u.email?.toLowerCase() === prestador.email.toLowerCase()
-              ? { ...u, status: novaSituacao === 'ATIVO' ? 'ATIVO' : 'BLOQUEADO' }
-              : u
-        )
-      )
-    );
+    const atualizados = api.salvarPrestador({
+      empresaId,
+      nome: nome.trim(),
+      razaoSocial: razaoSocial.trim() || nome.trim(),
+      cnpj: cnpj.trim(),
+      email: emailNorm,
+      senha: senha.trim(),
+      servico: servico.trim(),
+      remuneracao,
+      valorBase: Number(valorBase)
+    });
 
-    showToast(
-      novaSituacao === 'ATIVO'
-        ? `${prestador.nome} reativado (1 licenca alocada).`
-        : `${prestador.nome} inativado (1 licenca liberada).`,
-      'success'
-    );
-    carregarDados();
+    setPrestadores(atualizados);
+    setModalFuncionarioAberto(false);
+  };
+
+  const handleMovimentarFuncionario = (prestador: PrestadorPJ) => {
+    if (prestador.situacao !== 'ATIVO' && licencasEsgotadas) {
+      window.alert(
+        `Limite de ${limiteLicencas} licença(s) atingido. Não é possível reativar.`
+      );
+      return;
+    }
+
+    const atualizados = api.alternarSituacaoPrestador(prestador.id, empresaId);
+    setPrestadores(atualizados);
+  };
+
+  const abrirModalEntrega = () => {
+    const ativo = prestadores.find((p) => p.situacao === 'ATIVO');
+    setPrestadorSelecionadoId(ativo ? ativo.id : '');
+    setTituloEntrega('');
+    setPrazoEntrega(new Date().toISOString().split('T')[0]);
+    setQuantidadeEntrega(1);
+    setModalEntregaAberto(true);
+  };
+
+  const handleRegistrarEntrega = (e: FormEvent) => {
+    e.preventDefault();
+    const alvo = prestadores.find((p) => p.id === prestadorSelecionadoId);
+    if (!alvo || !tituloEntrega.trim()) return;
+
+    api.salvarTarefa({
+      empresaId,
+      prestadorId: alvo.id,
+      prestadorNome: alvo.nome,
+      titulo: tituloEntrega.trim(),
+      horasTrabalhadas: Number(quantidadeEntrega),
+      valorUnitario: alvo.valorBase,
+      prazo: prazoEntrega
+    });
+
+    setTarefas(api.getTarefasPorEmpresa(empresaId));
+    setModalEntregaAberto(false);
+  };
+
+  const handleAprovar = (id: string) => {
+    setTarefas(api.atualizarStatusTarefa(id, 'APROVADO', empresaId));
+  };
+
+  const handlePagar = (id: string) => {
+    setTarefas(api.atualizarStatusTarefa(id, 'PAGO', empresaId));
+  };
+
+  const formatarMoeda = (valor: number) =>
+    valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+  const labelModalidade = (mod: ModalidadeContrato) => {
+    if (mod === 'POR_HORA') return 'Hora';
+    if (mod === 'PLANTAO') return 'Plantão';
+    return 'Mensal';
   };
 
   return (
-    <div className="p-6 space-y-6 bg-slate-50 min-h-screen">
-      {/* Cabeçalho */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
-              <Shield className="w-7 h-7 text-indigo-600" />
-              {empresaInfo?.nomeFantasia ||
-                usuarioLogado?.empresaNome ||
-                'Painel da Clinica'}
-            </h1>
-            {empresaInfo?.plano && (
-              <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 flex items-center gap-1">
-                <Building2 size={12} />
-                Plano {empresaInfo.plano}
-              </span>
-            )}
+    <div className="min-h-screen bg-slate-50">
+      <header className="bg-white border-b border-slate-200 sticky top-0 z-30">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <span className="font-bold text-slate-900 text-lg">Clingest PJ</span>
+            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
+              <Building2 className="w-3.5 h-3.5" />
+              {usuario.empresaNome || 'RH / Clínica'}
+            </span>
           </div>
-          <p className="text-sm text-slate-500 mt-0.5">
-            Controle interno de prestadores PJ, credenciais de acesso e aprovacao de plantoes
-          </p>
+
+          <div className="flex items-center gap-4">
+            <div className="text-right hidden sm:block">
+              <p className="text-sm font-semibold text-slate-800">{usuario.nome}</p>
+              <p className="text-xs text-slate-500">{usuario.email}</p>
+            </div>
+            <button
+              type="button"
+              onClick={onLogout}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+            >
+              <LogOut className="w-4 h-4" />
+              Sair
+            </button>
+          </div>
         </div>
+      </header>
 
-        <button
-          onClick={handleAbrirModalNovo}
-          className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl transition shadow-sm font-medium text-sm ${
-            bloqueadoPorLimite
-              ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
-              : 'bg-indigo-600 text-white hover:bg-indigo-700'
-          }`}
-        >
-          <Plus className="w-5 h-5" /> Novo Funcionario / Prestador
-        </button>
-      </div>
-
-      {/* Alerta de Consumo de Licenças do Plano */}
-      <div
-        className={`p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${
-          bloqueadoPorLimite
-            ? 'bg-red-50 border-red-200 text-red-900'
-            : emCobrancaExcedente
-            ? 'bg-amber-50 border-amber-200 text-amber-900'
-            : 'bg-white border-slate-200 text-slate-800'
-        }`}
-      >
-        <div className="flex items-center gap-3">
-          {bloqueadoPorLimite || emCobrancaExcedente ? (
-            <AlertTriangle
-              className={`w-6 h-6 shrink-0 ${
-                bloqueadoPorLimite ? 'text-red-600' : 'text-amber-600'
-              }`}
-            />
-          ) : (
-            <Users className="w-6 h-6 text-indigo-600 shrink-0" />
-          )}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h4 className="font-bold text-sm">Ocupacao do Plano Contratado</h4>
-            <p className="text-xs opacity-85">
-              {bloqueadoPorLimite
-                ? `Limite maximo de ${limitePlanoEmpresa} licencas PJ atingido. Inative um profissional ou solicite upgrade ao administrador Master.`
-                : emCobrancaExcedente
-                ? `Limite base de ${limitePlanoEmpresa} licencas atingido. Novos profissionais ativos geram cobranca adicional de R$ ${valorPorExcedente.toFixed(
-                    2
-                  )}/mes.`
-                : `Voce esta utilizando ${totalAtivos} de ${limitePlanoEmpresa} licencas de profissionais PJ contratadas.`}
+            <h1 className="text-2xl font-bold text-slate-900">
+              Administração de RH e Pagamentos PJ
+            </h1>
+            <p className="text-sm text-slate-500">
+              Controle exclusivo da unidade: entrada e saída de funcionários, acessos e pagamentos.
             </p>
           </div>
-        </div>
-        <div className="text-left sm:text-right shrink-0">
-          <span
-            className={`text-lg font-bold ${
-              bloqueadoPorLimite
-                ? 'text-red-600'
-                : emCobrancaExcedente
-                ? 'text-amber-700'
-                : 'text-indigo-600'
-            }`}
-          >
-            {totalAtivos} / {limitePlanoEmpresa}
-          </span>
-          <span className="block text-[10px] uppercase font-semibold text-slate-400">
-            Licencas PJ Ativas
-          </span>
-        </div>
-      </div>
 
-      {/* Lista de Profissionais da Clínica */}
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-        <div className="p-5 border-b border-slate-200 font-semibold text-slate-800 flex items-center justify-between">
-          <span>Profissionais e Credenciais Vinculadas</span>
-          <span className="text-xs font-normal text-slate-500">
-            {prestadores.length} cadastrado(s)
-          </span>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-slate-50 text-slate-600 text-xs uppercase tracking-wider border-b border-slate-200">
-                <th className="p-4 font-semibold">Profissional / Especialidade</th>
-                <th className="p-4 font-semibold">CNPJ / Razao Social</th>
-                <th className="p-4 font-semibold">Credencial (Login)</th>
-                <th className="p-4 font-semibold">Valor Base Hora</th>
-                <th className="p-4 font-semibold">Status</th>
-                <th className="p-4 font-semibold text-right">Acesso</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 text-sm">
-              {prestadores.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="p-8 text-center text-slate-500 text-sm">
-                    Nenhum profissional PJ cadastrado nesta empresa ainda. Clique em{' '}
-                    <strong>Novo Funcionario / Prestador</strong> para adicionar.
-                  </td>
-                </tr>
-              ) : (
-                prestadores.map((p) => (
-                  <tr key={p.id} className="hover:bg-slate-50/80 transition">
-                    <td className="p-4 font-medium text-slate-800">
-                      {p.nome}
-                      <span className="block text-xs text-slate-400 font-normal">
-                        {p.servico}
-                      </span>
-                    </td>
-                    <td className="p-4 text-slate-600">
-                      {p.cnpj}
-                      <span className="block text-xs text-slate-400 font-normal">
-                        {p.razaoSocial}
-                      </span>
-                    </td>
-                    <td className="p-4 font-mono text-xs text-indigo-600 font-semibold">
-                      {p.usuario || p.email}
-                      <span className="block text-[11px] font-sans font-normal text-slate-400">
-                        {p.email}
-                      </span>
-                    </td>
-                    <td className="p-4 text-emerald-600 font-bold">
-                      R$ {Number(p.valorBase || 0).toFixed(2)}/h
-                    </td>
-                    <td className="p-4">
-                      <span
-                        className={`px-3 py-1 rounded-full text-xs font-semibold inline-block ${
-                          p.situacao === 'ATIVO'
-                            ? 'bg-emerald-100 text-emerald-700'
-                            : 'bg-slate-200 text-slate-600'
-                        }`}
-                      >
-                        {p.situacao}
-                      </span>
-                    </td>
-                    <td className="p-4 text-right">
-                      <button
-                        onClick={() => handleAlternarSituacaoPrestador(p)}
-                        className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition ${
-                          p.situacao === 'ATIVO'
-                            ? 'bg-slate-100 text-slate-700 hover:bg-red-50 hover:text-red-700'
-                            : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                        }`}
-                        title={
-                          p.situacao === 'ATIVO'
-                            ? 'Inativar profissional e liberar licenca'
-                            : 'Reativar profissional'
-                        }
-                      >
-                        {p.situacao === 'ATIVO' ? (
-                          <>
-                            <UserX size={14} /> Inativar
-                          </>
-                        ) : (
-                          <>
-                            <UserCheck size={14} /> Reativar
-                          </>
-                        )}
-                      </button>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Apontamentos / Horas Enviadas para Aprovação */}
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-        <div className="p-5 border-b border-slate-200 font-semibold text-slate-800 flex justify-between items-center">
-          <span>Aprovacao de Atendimentos e Horas da Equipe</span>
-          <span className="text-xs bg-amber-50 text-amber-700 px-3 py-1 rounded-full font-medium">
-            {tarefas.filter((t) => t.status === 'PENDENTE').length} pendente(s)
-          </span>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-slate-50 text-slate-600 text-xs uppercase tracking-wider border-b border-slate-200">
-                <th className="p-4 font-semibold">Profissional</th>
-                <th className="p-4 font-semibold">Paciente</th>
-                <th className="p-4 font-semibold">Horas / Valor Total</th>
-                <th className="p-4 font-semibold">Status</th>
-                <th className="p-4 font-semibold text-right">Acao</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 text-sm">
-              {tarefas.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="p-8 text-center text-slate-500 text-sm">
-                    Nenhum apontamento de horas registrado pela equipe ate o momento.
-                  </td>
-                </tr>
-              ) : (
-                tarefas.map((t) => (
-                  <tr key={t.id} className="hover:bg-slate-50/80 transition">
-                    <td className="p-4 font-medium text-slate-800">
-                      {t.prestadorNome}
-                    </td>
-                    <td className="p-4 text-slate-600">
-                      {t.pacienteNome || 'Nao especificado'}
-                    </td>
-                    <td className="p-4 font-semibold text-slate-800">
-                      {t.horasTrabalhadas}h{' '}
-                      <span className="text-xs text-emerald-600 font-normal">
-                        (R$ {t.valorEntrega.toFixed(2)})
-                      </span>
-                    </td>
-                    <td className="p-4">
-                      <span
-                        className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                          t.status === 'APROVADO'
-                            ? 'bg-emerald-100 text-emerald-700'
-                            : 'bg-amber-100 text-amber-700'
-                        }`}
-                      >
-                        {t.status}
-                      </span>
-                    </td>
-                    <td className="p-4 text-right">
-                      {t.status === 'PENDENTE' && (
-                        <button
-                          onClick={async () => {
-                            await api.atualizarStatusTarefa(t.id, 'APROVADO');
-                            carregarDados();
-                          }}
-                          className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-medium hover:bg-emerald-700 transition"
-                        >
-                          Aprovar Horas
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Modal de Cadastro de Funcionário / Prestador */}
-      {modalAberto && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-              <h2 className="text-lg font-bold text-slate-800">
-                Cadastrar Novo Profissional (Funcionario PJ)
-              </h2>
+          <div className="flex flex-wrap items-center gap-2.5">
+            {prestadores.some((p) => p.situacao === 'ATIVO') && (
               <button
-                onClick={() => setModalAberto(false)}
-                className="text-slate-400 hover:text-slate-600 font-bold text-lg"
+                type="button"
+                onClick={abrirModalEntrega}
+                className="inline-flex items-center gap-2 bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 text-sm font-semibold px-4 py-2.5 rounded-xl transition cursor-pointer"
               >
-                &times;
+                <PlusCircle className="w-4 h-4 text-indigo-600" />
+                Lançar Entrega
               </button>
-            </div>
-
-            {emCobrancaExcedente && (
-              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900">
-                Atencao: sua clinica ja atingiu as {limitePlanoEmpresa} licencas base. Este
-                cadastro adicionara <strong>R$ {valorPorExcedente.toFixed(2)}/mes</strong> na
-                fatura da empresa.
-              </div>
             )}
 
-            <form onSubmit={handleCadastrarFuncionario} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">
-                  Nome Completo
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={nome}
-                  onChange={(e) => setNome(e.target.value)}
-                  className="w-full border border-slate-300 rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
-                  placeholder="Ex: Dra. Juliana Souza"
-                />
-              </div>
+            <button
+              type="button"
+              onClick={abrirModalFuncionario}
+              disabled={licencasEsgotadas}
+              className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-300 text-white text-sm font-semibold px-4 py-2.5 rounded-xl shadow-sm transition cursor-pointer disabled:cursor-not-allowed"
+            >
+              <UserPlus className="w-4 h-4" />
+              Cadastrar Funcionário PJ
+            </button>
+          </div>
+        </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1">
-                    Razao Social
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={razaoSocial}
-                    onChange={(e) => setRazaoSocial(e.target.value)}
-                    className="w-full border border-slate-300 rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
-                    placeholder="Ex: Souza Saude S/S"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1">
-                    CNPJ
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={cnpj}
-                    onChange={(e) => setCnpj(e.target.value)}
-                    className="w-full border border-slate-300 rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
-                    placeholder="00.000.000/0001-00"
-                  />
-                </div>
-              </div>
+        <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+            <div className="flex items-center justify-between text-slate-500 text-xs font-semibold uppercase">
+              <span>Ativos / Licenças</span>
+              <Users className="w-4 h-4 text-indigo-600" />
+            </div>
+            <p className="text-2xl font-bold text-slate-900 mt-2">
+              {metricas.ativos}{' '}
+              <span className="text-sm font-normal text-slate-400">
+                / {limiteLicencas}
+              </span>
+            </p>
+            <p className="text-xs text-slate-500 mt-1">
+              {licencasExcedentes > 0
+                ? `+${licencasExcedentes} adicional(is) (${formatarMoeda(
+                    regras.valorAdicionalLicenca
+                  )}/cada)`
+                : `${metricas.desligados} desligado(s) no histórico`}
+            </p>
+          </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1">
-                    E-mail
-                  </label>
-                  <input
-                    type="email"
-                    required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="w-full border border-slate-300 rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
-                    placeholder="email@clinica.com"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1">
-                    Especialidade / Servico
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={servico}
-                    onChange={(e) => setServico(e.target.value)}
-                    className="w-full border border-slate-300 rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
-                    placeholder="Ex: Enfermagem UTI"
-                  />
-                </div>
-              </div>
+          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+            <div className="flex items-center justify-between text-slate-500 text-xs font-semibold uppercase">
+              <span>Entregas da Equipe</span>
+              <Clock className="w-4 h-4 text-blue-600" />
+            </div>
+            <p className="text-2xl font-bold text-slate-900 mt-2">
+              {tarefas.length}
+            </p>
+            <p className="text-xs text-slate-500 mt-1">
+              Produções registradas na clínica
+            </p>
+          </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">
-                  Valor da Hora Base (R$)
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  required
-                  value={valorBase}
-                  onChange={(e) => setValorBase(Number(e.target.value))}
-                  className="w-full border border-slate-300 rounded-xl p-3 text-sm font-bold text-emerald-600 focus:ring-2 focus:ring-indigo-500 outline-none"
-                />
-              </div>
+          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+            <div className="flex items-center justify-between text-slate-500 text-xs font-semibold uppercase">
+              <span>Saldo a Pagar</span>
+              <DollarSign className="w-4 h-4 text-amber-500" />
+            </div>
+            <p className="text-2xl font-bold text-slate-900 mt-2">
+              {formatarMoeda(metricas.aPagar)}
+            </p>
+            <p className="text-xs text-amber-600 mt-1">
+              Aguardando liquidação financeira
+            </p>
+          </div>
 
-              <div className="border-t border-slate-100 pt-3">
-                <p className="text-xs font-bold text-slate-700 mb-2">
-                  Credenciais de Acesso do Funcionario
-                </p>
+          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+            <div className="flex items-center justify-between text-slate-500 text-xs font-semibold uppercase">
+              <span>Total Pago</span>
+              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+            </div>
+            <p className="text-2xl font-bold text-slate-900 mt-2">
+              {formatarMoeda(metricas.pago)}
+            </p>
+            <p className="text-xs text-emerald-600 mt-1">
+              Repasses concluídos aos PJs
+            </p>
+          </div>
+        </section>
+
+        <section className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4">
+          <div>
+            <h2 className="text-base font-bold text-slate-900">
+              Entrada e Saída de Funcionários PJ ({prestadores.length})
+            </h2>
+            <p className="text-xs text-slate-500">
+              Cada profissional possui seu próprio login e senha para acessar o Portal PJ.
+            </p>
+          </div>
+
+          {prestadores.length === 0 ? (
+            <div className="py-10 text-center border border-dashed border-slate-200 rounded-xl space-y-1.5">
+              <p className="text-sm font-semibold text-slate-700">
+                Painel limpo: nenhum funcionário PJ cadastrado ainda.
+              </p>
+              <p className="text-xs text-slate-500">
+                Clique em "Cadastrar Funcionário PJ" para adicionar sua equipe.
+              </p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-slate-50 text-xs uppercase text-slate-500 border-b border-slate-200">
+                  <tr>
+                    <th className="py-3 px-4">Profissional</th>
+                    <th className="py-3 px-4">Login / Senha</th>
+                    <th className="py-3 px-4">Contrato</th>
+                    <th className="py-3 px-4">Entrada / Saída</th>
+                    <th className="py-3 px-4">Situação</th>
+                    <th className="py-3 px-4 text-right">Controle RH</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {prestadores.map((p) => {
+                    const ativo = p.situacao === 'ATIVO';
+                    return (
+                      <tr key={p.id} className="hover:bg-slate-50">
+                        <td className="py-3 px-4">
+                          <p className="font-semibold text-slate-900">{p.nome}</p>
+                          <p className="text-xs text-slate-500">
+                            {p.servico} • CNPJ: {p.cnpj}
+                          </p>
+                        </td>
+                        <td className="py-3 px-4 text-xs">
+                          <p className="text-slate-800 font-medium">{p.email}</p>
+                          <p className="font-mono text-slate-500">
+                            Senha: {p.senha}
+                          </p>
+                        </td>
+                        <td className="py-3 px-4 text-xs font-semibold text-slate-800">
+                          {formatarMoeda(p.valorBase)} /{' '}
+                          {labelModalidade(p.remuneracao)}
+                        </td>
+                        <td className="py-3 px-4 text-xs text-slate-600">
+                          <p>Entrada: {p.dataEntrada}</p>
+                          {p.dataSaida && (
+                            <p className="text-red-600">Saída: {p.dataSaida}</p>
+                          )}
+                        </td>
+                        <td className="py-3 px-4">
+                          <span
+                            className={`px-2 py-0.5 rounded text-xs font-semibold ${
+                              ativo
+                                ? 'bg-emerald-100 text-emerald-700'
+                                : 'bg-red-100 text-red-700'
+                            }`}
+                          >
+                            {ativo ? 'ATIVO' : 'DESLIGADO'}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 text-right">
+                          <button
+                            type="button"
+                            onClick={() => handleMovimentarFuncionario(p)}
+                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                              ativo
+                                ? 'bg-red-50 text-red-700 hover:bg-red-100 border border-red-200'
+                                : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
+                            }`}
+                          >
+                            {ativo ? (
+                              <>
+                                <UserX className="w-3.5 h-3.5" />
+                                Registrar Saída
+                              </>
+                            ) : (
+                              <>
+                                <UserCheck className="w-3.5 h-3.5" />
+                                Reativar Entrada
+                              </>
+                            )}
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+
+        <section className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4">
+          <div>
+            <h2 className="text-base font-bold text-slate-900">
+              Pagamentos e Entregas Contratuais ({tarefas.length})
+            </h2>
+            <p className="text-xs text-slate-500">
+              Aprove as entregas realizadas e confirme os pagamentos dos prestadores.
+            </p>
+          </div>
+
+          {tarefas.length === 0 ? (
+            <p className="py-8 text-center text-xs text-slate-400">
+              Nenhuma entrega registrada nesta clínica até o momento.
+            </p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-slate-50 text-xs uppercase text-slate-500 border-b border-slate-200">
+                  <tr>
+                    <th className="py-3 px-4">Profissional</th>
+                    <th className="py-3 px-4">Entrega</th>
+                    <th className="py-3 px-4">Data</th>
+                    <th className="py-3 px-4">Qtd</th>
+                    <th className="py-3 px-4">Valor Total</th>
+                    <th className="py-3 px-4">Status</th>
+                    <th className="py-3 px-4 text-right">Pagamento</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {tarefas.map((t) => (
+                    <tr key={t.id} className="hover:bg-slate-50">
+                      <td className="py-3 px-4 font-semibold text-slate-900 text-xs">
+                        {t.prestadorNome}
+                      </td>
+                      <td className="py-3 px-4 text-xs text-slate-700">
+                        {t.titulo}
+                      </td>
+                      <td className="py-3 px-4 text-xs text-slate-500">
+                        {t.prazo}
+                      </td>
+                      <td className="py-3 px-4 text-xs text-slate-700">
+                        {t.horasTrabalhadas}
+                      </td>
+                      <td className="py-3 px-4 font-bold text-slate-900 text-xs">
+                        {formatarMoeda(t.valorEntrega)}
+                      </td>
+                      <td className="py-3 px-4">
+                        <span
+                          className={`px-2 py-0.5 rounded text-xs font-semibold ${
+                            t.status === 'PAGO'
+                              ? 'bg-emerald-100 text-emerald-700'
+                              : t.status === 'APROVADO'
+                              ? 'bg-blue-100 text-blue-700'
+                              : 'bg-amber-100 text-amber-700'
+                          }`}
+                        >
+                          {t.status}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-right space-x-2">
+                        {t.status === 'PENDENTE' && (
+                          <button
+                            type="button"
+                            onClick={() => handleAprovar(t.id)}
+                            className="px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 text-xs font-semibold cursor-pointer"
+                          >
+                            Aprovar
+                          </button>
+                        )}
+                        {t.status !== 'PAGO' ? (
+                          <button
+                            type="button"
+                            onClick={() => handlePagar(t.id)}
+                            className="px-2.5 py-1 rounded-lg bg-emerald-600 text-white hover:bg-emerald-500 text-xs font-semibold cursor-pointer"
+                          >
+                            Pagar
+                          </button>
+                        ) : (
+                          <span className="text-[11px] text-slate-400">
+                            Pago em {t.dataPagamento}
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+
+        {modalFuncionarioAberto && (
+          <div className="fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl space-y-4">
+              <h2 className="text-lg font-bold text-slate-900">
+                Cadastrar Funcionário PJ
+              </h2>
+
+              {!regras.bloquearExcessoLicencas &&
+                metricas.ativos >= limiteLicencas && (
+                  <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-800">
+                    Limite base de {limiteLicencas} licença(s) atingido. Este
+                    cadastro será contabilizado como adicional (
+                    <strong>
+                      +{formatarMoeda(regras.valorAdicionalLicenca)}/mês
+                    </strong>
+                    ).
+                  </div>
+                )}
+
+              <form onSubmit={handleCadastrarFuncionario} className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1">
-                      Nome de Usuario (Login)
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Nome Completo *
                     </label>
                     <input
                       type="text"
                       required
-                      value={usuario}
-                      onChange={(e) => setUsuario(e.target.value)}
-                      className="w-full border border-slate-300 rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 outline-none font-mono"
-                      placeholder="juliana.souza"
+                      value={nome}
+                      onChange={(e) => setNome(e.target.value)}
+                      placeholder="Ex: Dr. Rafael Lima"
+                      className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg"
                     />
                   </div>
+
                   <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1">
-                      Senha Provisoria
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      CNPJ *
                     </label>
-                    <div className="relative">
+                    <input
+                      type="text"
+                      required
+                      value={cnpj}
+                      onChange={(e) => setCnpj(e.target.value)}
+                      placeholder="00.000.000/0001-00"
+                      className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Empresa / Razão Social
+                    </label>
+                    <input
+                      type="text"
+                      value={razaoSocial}
+                      onChange={(e) => setRazaoSocial(e.target.value)}
+                      placeholder="Lima Serviços Médicos"
+                      className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Especialidade *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={servico}
+                      onChange={(e) => setServico(e.target.value)}
+                      placeholder="Ex: Fisioterapia"
+                      className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Modalidade *
+                    </label>
+                    <select
+                      value={remuneracao}
+                      onChange={(e) =>
+                        setRemuneracao(e.target.value as ModalidadeContrato)
+                      }
+                      className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white"
+                    >
+                      {modalidadesPermitidas.map((m) => (
+                        <option key={m.valor} value={m.valor}>
+                          {m.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Valor Base (R$) *
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      step="0.01"
+                      required
+                      value={valorBase}
+                      onChange={(e) => setValorBase(Number(e.target.value))}
+                      className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg"
+                    />
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-slate-100 space-y-3">
+                  <p className="text-xs font-bold text-indigo-700 uppercase">
+                    Login Próprio do Funcionário
+                  </p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">
+                        E-mail *
+                      </label>
                       <input
-                        type={mostrarSenha ? 'text' : 'password'}
+                        type="email"
+                        required
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="profissional@pj.com"
+                        className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">
+                        Senha *
+                      </label>
+                      <input
+                        type="text"
                         required
                         value={senha}
                         onChange={(e) => setSenha(e.target.value)}
-                        className="w-full border border-slate-300 rounded-xl p-3 pr-10 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
-                        placeholder="Minimo 4 caracteres"
+                        placeholder="Senha inicial"
+                        className="w-full px-3 py-2 text-sm font-mono border border-slate-300 rounded-lg"
                       />
-                      <button
-                        type="button"
-                        onClick={() => setMostrarSenha(!mostrarSenha)}
-                        className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600"
-                      >
-                        {mostrarSenha ? <EyeOff size={16} /> : <Eye size={16} />}
-                      </button>
                     </div>
                   </div>
                 </div>
-              </div>
 
-              <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setModalAberto(false)}
-                  className="px-4 py-2.5 border border-slate-300 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50 transition"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-semibold hover:bg-indigo-700 transition shadow-sm"
-                >
-                  Cadastrar e Gerar Acesso
-                </button>
-              </div>
-            </form>
+                {erroCadastro && (
+                  <p className="text-xs font-medium text-red-600">
+                    {erroCadastro}
+                  </p>
+                )}
+
+                <div className="flex justify-end gap-2 pt-3">
+                  <button
+                    type="button"
+                    onClick={() => setModalFuncionarioAberto(false)}
+                    className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 text-sm font-semibold bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg cursor-pointer"
+                  >
+                    Salvar Funcionário
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+
+        {modalEntregaAberto && (
+          <div className="fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl space-y-4">
+              <h2 className="text-lg font-bold text-slate-900">
+                Registrar Entrega PJ
+              </h2>
+
+              <form onSubmit={handleRegistrarEntrega} className="space-y-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Funcionário PJ *
+                  </label>
+                  <select
+                    required
+                    value={prestadorSelecionadoId}
+                    onChange={(e) => setPrestadorSelecionadoId(e.target.value)}
+                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white"
+                  >
+                    {prestadores
+                      .filter((p) => p.situacao === 'ATIVO')
+                      .map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.nome} ({formatarMoeda(p.valorBase)} /{' '}
+                          {labelModalidade(p.remuneracao)})
+                        </option>
+                      ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Descrição *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={tituloEntrega}
+                    onChange={(e) => setTituloEntrega(e.target.value)}
+                    placeholder="Ex: Plantão 12h Emergência"
+                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Data *
+                    </label>
+                    <input
+                      type="date"
+                      required
+                      value={prazoEntrega}
+                      onChange={(e) => setPrazoEntrega(e.target.value)}
+                      className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Quantidade *
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      step="0.5"
+                      required
+                      value={quantidadeEntrega}
+                      onChange={(e) =>
+                        setQuantidadeEntrega(Number(e.target.value))
+                      }
+                      className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-3">
+                  <button
+                    type="button"
+                    onClick={() => setModalEntregaAberto(false)}
+                    className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 text-sm font-semibold bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg cursor-pointer"
+                  >
+                    Confirmar
+                  </button>
+                </div>
+              </form>
+            </div> 
+          </div>
+        )}
+      </main>
     </div>
   );
 };

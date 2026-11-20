@@ -2,15 +2,31 @@ export type PerfilAcesso = 'MASTER' | 'GESTOR' | 'PRESTADOR';
 
 export interface UsuarioSistema {
   id: string;
-  empresaId?: string; // Vinculo com a empresa contratante (multi-tenant)
-  empresaNome?: string;
   nome: string;
   email: string;
-  usuario: string;
-  senha?: string;
+  senha: string;
   perfil: PerfilAcesso;
-  prestadorId?: string; // Vinculo caso seja perfil PRESTADOR
+  empresaId?: string;
+  empresaNome?: string;
+}
+
+export interface CredencialMasterView {
+  id: string;
+  nome: string;
+  email: string;
+  senha: string;
+  perfil: PerfilAcesso;
+  empresaId: string;
+  empresaNome: string;
   ativo: boolean;
-  exigirTrocaSenha?: boolean;
-  criadoEm: string;
+}
+
+export interface RegistroMovimentacaoAcesso {
+  id: string;
+  usuarioNome: string;
+  usuarioEmail: string;
+  perfil: PerfilAcesso;
+  empresaNome: string;
+  tipo: 'ENTRADA' | 'SAIDA';
+  dataHora: string;
 }
